@@ -338,8 +338,13 @@ window.__ModuleLoader__.load({
       star: ["m12 4 2.4 5 5.6.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.6-.8z"],
     };
 
+    /**
+     * Line icons. They inherit `currentColor`, so a tool's hover/active/pressed
+     * colour reaches the strokes, and they default to the ribbon's 20px size
+     * with a 1.8 stroke: thick enough to read at 20px in both theme modes.
+     */
     function Icon(props) {
-      const size = typeof props.size === "number" ? props.size : 16;
+      const size = typeof props.size === "number" ? props.size : 20;
       const parts = ICONS[props.name] || ICONS.page;
       const list = Array.isArray(parts) ? parts : [parts];
       return h(
@@ -351,7 +356,7 @@ window.__ModuleLoader__.load({
           height: size,
           fill: "none",
           stroke: "currentColor",
-          strokeWidth: props.weight || 1.7,
+          strokeWidth: props.weight || 1.8,
           strokeLinecap: "round",
           strokeLinejoin: "round",
           "aria-hidden": "true",
@@ -408,15 +413,28 @@ window.__ModuleLoader__.load({
         null,
         `
 .dx-root{
-  --dx-text:var(--dsh-text,#1f2328);
-  --dx-muted:var(--dsh-muted,#5f6b7a);
-  --dx-border:var(--dsh-border,#d0d7de);
-  --dx-surface:var(--dsh-surface,#ffffff);
-  --dx-bg:var(--dsh-bg,#f3f2f1);
-  --dx-hover:var(--dsh-hover,rgba(24,90,189,.10));
-  --dx-selected:var(--dsh-selected,rgba(24,90,189,.16));
-  --dx-accent:var(--dsh-accent,#185abd);
-  --dx-danger:var(--dsh-danger,#b42318);
+  /* Palette bridge. Every colour is read from a real DSH theme token first
+     (--dsw-alias-*), then from the legacy --dsh-* name, then from a neutral
+     fallback so the panel still renders outside the Harness. The --dsw-*
+     tokens already switch with the app theme, so no colour below is chosen by
+     prefers-color-scheme; only the paper sheet keeps a media query. */
+  --dx-text:var(--dsw-alias-label-primary,var(--dsh-text,#1f2328));
+  --dx-muted:var(--dsw-alias-label-secondary,var(--dsh-muted,#5f6b7a));
+  --dx-border:var(--dsw-alias-border-l1,var(--dsh-border,#d0d7de));
+  --dx-border-strong:var(--dsw-alias-border-l2,var(--dsh-border,#d0d7de));
+  --dx-surface:var(--dsw-alias-bg-layer-1,var(--dsh-surface,#ffffff));
+  --dx-surface-2:var(--dsw-alias-bg-layer-2,var(--dsh-surface,#ffffff));
+  --dx-bg:var(--dsw-alias-bg-base,var(--dsh-bg,#f3f2f1));
+  --dx-overlay:var(--dsw-alias-bg-overlay,var(--dsh-surface,#ffffff));
+  --dx-sidebar:var(--dsw-specific-sidebar-fill,var(--dsh-surface,#ffffff));
+  --dx-accent:var(--dsw-alias-brand-primary,var(--dsh-accent,#185abd));
+  --dx-on-accent:var(--dsw-alias-label-primary-inverted,#ffffff);
+  --dx-hover:var(--dsw-alias-interactive-bg-hover-solid,var(--dsh-hover,rgba(24,90,189,.12)));
+  --dx-selected:var(--dsw-alias-interactive-bg-hover-solid,var(--dsh-selected,rgba(24,90,189,.16)));
+  --dx-danger:var(--dsw-alias-state-error-primary,var(--dsh-danger,#b42318));
+  --dx-success:var(--dsw-alias-state-success-primary,#1a7f37);
+  --dx-warn:var(--dsw-alias-state-warn-primary,#9a6700);
+  --dx-idle:var(--dsw-alias-state-idle-primary,#8c959f);
   --dx-paper:#ffffff;
   --dx-paper-text:#1b1b1b;
   --dx-paper-border:#d8d6d4;
@@ -428,18 +446,9 @@ window.__ModuleLoader__.load({
   font-size:13px;line-height:1.35;overflow:hidden;
 }
 @media (prefers-color-scheme:dark){
-  .dx-root{
-    --dx-text:var(--dsh-text,#e6edf3);
-    --dx-muted:var(--dsh-muted,#9aa4b2);
-    --dx-border:var(--dsh-border,#3d444d);
-    --dx-surface:var(--dsh-surface,#161b22);
-    --dx-bg:var(--dsh-bg,#0d1117);
-    --dx-hover:var(--dsh-hover,rgba(110,160,255,.16));
-    --dx-selected:var(--dsh-selected,rgba(110,160,255,.24));
-    --dx-accent:var(--dsh-accent,#4d8de0);
-    --dx-danger:var(--dsh-danger,#ff8a80);
-    --dx-paper-border:#2a3038;
-  }
+  /* Paper only: the page is a sheet of paper in both themes. The rest of the
+     panel follows the theme tokens above. */
+  .dx-root{--dx-paper-border:#2a3038;}
 }
 .dx-root *{box-sizing:border-box;}
 .dx-root button{font:inherit;color:inherit;}
@@ -448,30 +457,30 @@ window.__ModuleLoader__.load({
 /* ---------------------------------------------------------- title bar */
 .dx-titlebar{
   display:flex;align-items:center;gap:8px;min-height:40px;padding:0 10px;
-  background:var(--dx-accent);color:#fff;flex:0 0 auto;
+  background:var(--dx-accent);color:var(--dx-on-accent);flex:0 0 auto;
 }
 .dx-titlebar .dx-appdot{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;opacity:.95;}
 .dx-title{
   min-width:120px;max-width:32vw;padding:3px 7px;border:1px solid transparent;border-radius:var(--dx-radius);
-  background:transparent;color:#fff;font:inherit;font-size:13px;font-weight:600;text-overflow:ellipsis;
+  background:transparent;color:var(--dx-on-accent);font:inherit;font-size:13px;font-weight:600;text-overflow:ellipsis;
 }
-.dx-title:hover{background:rgba(255,255,255,.12);}
-.dx-title:focus{border-color:rgba(255,255,255,.65);background:rgba(255,255,255,.16);outline:none;}
+.dx-title:hover{border-color:var(--dx-on-accent);}
+.dx-title:focus{border-color:var(--dx-on-accent);outline:none;}
 .dx-title[disabled]{opacity:.9;cursor:default;}
 .dx-titlebar-spacer{flex:1 1 auto;}
 .dx-chip{
   display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;
-  background:rgba(255,255,255,.16);color:#fff;font-size:11px;white-space:nowrap;
+  border:1px solid var(--dx-on-accent);color:var(--dx-on-accent);font-size:11px;white-space:nowrap;opacity:.92;
 }
-.dx-chip.dx-chip-warn{background:rgba(255,214,102,.28);}
-.dx-chip.dx-chip-saved{background:rgba(255,255,255,.14);}
-.dx-titlebar .dx-zoom-mini{display:inline-flex;align-items:center;gap:4px;color:#fff;font-size:11px;}
-.dx-titlebar .dx-zoom-mini input[type=range]{width:82px;accent-color:#fff;}
+.dx-chip.dx-chip-warn{background:var(--dx-warn);border-color:transparent;color:var(--dx-on-accent);opacity:1;}
+.dx-chip.dx-chip-saved{border-color:var(--dx-on-accent);}
+.dx-titlebar .dx-zoom-mini{display:inline-flex;align-items:center;gap:4px;color:var(--dx-on-accent);font-size:11px;}
+.dx-titlebar .dx-zoom-mini input[type=range]{width:82px;accent-color:var(--dx-on-accent);}
 .dx-titlebar-btn{
-  display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;border:1px solid rgba(255,255,255,.35);
-  border-radius:var(--dx-radius);background:rgba(255,255,255,.10);color:#fff;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid var(--dx-on-accent);
+  border-radius:var(--dx-radius);background:transparent;color:var(--dx-on-accent);cursor:pointer;
 }
-.dx-titlebar-btn:hover{background:rgba(255,255,255,.22);}
+.dx-titlebar-btn:hover{opacity:.86;}
 
 /* -------------------------------------------------------------- tabs */
 .dx-tabrow{
@@ -497,78 +506,96 @@ window.__ModuleLoader__.load({
 .dx-ribbon-file[aria-selected=true]{color:var(--dx-accent);font-weight:600;border-bottom:2px solid var(--dx-accent);}
 
 /* ------------------------------------------------------------ ribbon */
-/* Constant-height ribbon: exactly 1/16 of the viewport on every tab.
-   Groups stay on one row and the whole ribbon scrolls horizontally instead
-   of growing taller, so switching tabs never shifts the document. */
+/* Constant-height ribbon: 1/16 of the viewport on a typical window, but never
+   shorter than 56px, because a 50px ribbon (805px viewport) clipped the group
+   captions, the labels mode and the style gallery. Groups stay on one row and
+   scroll horizontally instead of growing taller, so switching tabs never
+   shifts the document; overflow-y:hidden is safe because every child is
+   measured to fit (see test/ribbon.test.mjs and the Chromium probe). */
 .dx-ribbon{
   display:flex;align-items:stretch;gap:0;flex:0 0 auto;
-  height:calc(100vh / 16);min-height:36px;max-height:120px;padding:0 6px;
-  overflow-x:auto;overflow-y:hidden;background:var(--dx-surface);border-bottom:1px solid var(--dx-border);
+  height:max(56px,calc(100vh / 16));min-height:56px;max-height:none;padding:0 6px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+  background:var(--dx-surface);border-bottom:1px solid var(--dx-border);
 }
 .dx-ribbon[hidden]{display:none;}
+.dx-ribbon::-webkit-scrollbar{height:6px;}
+.dx-ribbon::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
 .dx-group{
   display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;
-  height:100%;min-height:0;padding:1px 6px 0;border-right:1px solid var(--dx-border);flex:0 0 auto;
+  height:100%;min-height:0;padding:2px 6px 1px;border-right:1px solid var(--dx-border);flex:0 0 auto;
 }
 .dx-group:last-child{border-right:0;}
 .dx-group-items{
-  display:flex;align-items:center;gap:2px;flex:1 1 auto;min-height:0;max-width:none;
-  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  display:flex;align-items:center;gap:2px;flex:1 1 auto;min-height:0;min-width:0;max-width:none;
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
 }
+.dx-group-items::-webkit-scrollbar{height:5px;}
+.dx-group-items::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
 .dx-group-items.dx-column{flex-direction:row;flex-wrap:nowrap;max-height:none;}
+/* A caption is a single 9px line with no line box to clip: line-height:1
+   makes the box exactly as tall as the glyphs at any ribbon height. */
 .dx-group-label{
-  margin:0;text-align:center;color:var(--dx-muted);font-size:9px;line-height:1.1;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;
+  margin:0;text-align:center;color:var(--dx-muted);font-size:9px;line-height:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;
 }
 .dx-tool{
   display:inline-flex;align-items:center;justify-content:center;gap:2px;
-  width:24px;height:24px;min-width:24px;padding:1px;border:1px solid transparent;border-radius:var(--dx-radius);
+  width:30px;height:30px;min-width:30px;padding:1px;border:1px solid transparent;border-radius:var(--dx-radius);
   background:transparent;color:var(--dx-text);cursor:pointer;font-size:10.5px;line-height:1.1;flex:0 0 auto;
 }
 .dx-tool .dx-tool-label{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dx-tool:hover:not([disabled]){background:var(--dx-hover);border-color:var(--dx-border);}
-.dx-tool[aria-pressed=true]{background:var(--dx-selected);border-color:var(--dx-accent);}
-.dx-tool[disabled]{opacity:.42;cursor:not-allowed;}
+.dx-tool:hover:not([disabled]){color:var(--dx-accent);background:var(--dx-hover);border-color:var(--dx-border-strong);}
+.dx-tool:active:not([disabled]){color:var(--dx-accent);background:var(--dx-selected);border-color:var(--dx-accent);}
+.dx-tool[aria-pressed=true]{background:var(--dx-selected);border-color:var(--dx-accent);color:var(--dx-accent);}
+/* Disabled stays readable: the icon is dimmed, never washed out. */
+.dx-tool[disabled]{opacity:.55;cursor:not-allowed;}
 .dx-tool:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-1px;}
-.dx-tool.dx-tool-small{height:24px;min-width:24px;font-size:10.5px;}
-.dx-tool.dx-tool-tiny{height:24px;min-width:24px;padding:1px;}
+.dx-tool.dx-tool-small{height:30px;min-width:30px;font-size:10.5px;}
+.dx-tool.dx-tool-tiny{height:30px;min-width:30px;padding:1px;}
+/* A colour tool stacks its swatch under the 20px icon inside the 30px button. */
+.dx-tool.dx-tool-swatch{flex-direction:column;gap:0;}
 /* View → Show labels restores the previous text labels inside the same height. */
 .dx-show-labels .dx-tool{
   width:auto;min-width:44px;height:calc(100% - 2px);flex-direction:column;gap:0;padding:1px 4px;
 }
 .dx-show-labels .dx-tool .dx-tool-label{display:block;font-size:9.5px;line-height:1.1;}
 .dx-show-labels .dx-tool.dx-tool-small,
-.dx-show-labels .dx-tool.dx-tool-tiny{height:calc(100% - 2px);min-width:30px;flex-direction:row;gap:3px;font-size:10.5px;}
+.dx-show-labels .dx-tool.dx-tool-tiny{height:calc(100% - 2px);min-width:32px;flex-direction:row;gap:3px;font-size:10.5px;}
 .dx-show-labels .dx-group{height:100%;min-height:0;}
 .dx-icon{display:block;flex:0 0 auto;}
-.dx-glyph{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:14px;font-weight:700;font-family:"Segoe UI",Georgia,serif;}
+.dx-glyph{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;font-size:16px;line-height:1;font-weight:700;font-family:"Segoe UI",Georgia,serif;}
 .dx-glyph.dx-glyph-italic{font-style:italic;font-weight:600;}
 .dx-glyph.dx-glyph-underline{text-decoration:underline;}
 .dx-glyph.dx-glyph-strike{text-decoration:line-through;}
-.dx-glyph.dx-glyph-sub{font-size:11px;}
-.dx-glyph.dx-glyph-sup{font-size:11px;}
-.dx-color-bar{display:block;width:16px;height:3px;margin-top:1px;border-radius:1px;}
-.dx-stepper{display:inline-flex;align-items:stretch;height:26px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);overflow:hidden;background:var(--dx-surface);}
-.dx-stepper button{border:0;background:transparent;color:var(--dx-text);width:18px;cursor:pointer;padding:0;}
-.dx-stepper button:hover{background:var(--dx-hover);}
+.dx-glyph.dx-glyph-sub{font-size:13px;}
+.dx-glyph.dx-glyph-sup{font-size:13px;}
+.dx-color-bar{display:block;width:18px;height:3px;margin-top:1px;border-radius:1px;flex:0 0 auto;}
+.dx-stepper{display:inline-flex;align-items:stretch;height:26px;max-height:100%;border:1px solid var(--dx-border);border-radius:var(--dx-radius);overflow:hidden;background:var(--dx-surface);}
+.dx-stepper button{border:0;background:transparent;color:var(--dx-text);width:20px;cursor:pointer;padding:0;}
+.dx-stepper button:hover{background:var(--dx-hover);color:var(--dx-accent);}
 .dx-stepper input{width:38px;border:0;border-left:1px solid var(--dx-border);border-right:1px solid var(--dx-border);background:transparent;color:var(--dx-text);font:inherit;font-size:12px;text-align:center;padding:0;}
 .dx-select{
-  height:26px;max-width:150px;padding:0 4px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
+  height:26px;max-height:100%;max-width:150px;padding:0 4px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
   background:var(--dx-surface);color:var(--dx-text);font:inherit;font-size:12px;
 }
-.dx-gallery{display:flex;gap:3px;overflow-x:auto;max-width:330px;padding-bottom:2px;}
+.dx-select:hover{color:var(--dx-accent);border-color:var(--dx-border-strong);}
+.dx-gallery{display:flex;align-items:center;gap:3px;align-self:stretch;max-width:330px;max-height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+.dx-gallery::-webkit-scrollbar{height:5px;}
+.dx-gallery::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
 .dx-style-card{
-  display:inline-flex;align-items:center;justify-content:center;min-width:34px;max-width:52px;height:30px;
+  display:inline-flex;align-items:center;justify-content:center;min-width:34px;max-width:52px;height:30px;max-height:100%;
   padding:2px 4px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
-  background:var(--dx-surface);color:var(--dx-text);cursor:pointer;text-align:left;font-size:11px;overflow:hidden;
+  background:var(--dx-surface);color:var(--dx-text);cursor:pointer;text-align:left;font-size:11px;overflow:hidden;flex:0 0 auto;
 }
-.dx-style-card:hover{background:var(--dx-hover);}
-.dx-style-card[aria-pressed=true]{border-color:var(--dx-accent);background:var(--dx-selected);}
+.dx-style-card:hover{color:var(--dx-accent);background:var(--dx-hover);border-color:var(--dx-border-strong);}
+.dx-style-card[aria-pressed=true]{border-color:var(--dx-accent);background:var(--dx-selected);color:var(--dx-accent);}
 .dx-style-card b{display:block;font-size:14px;line-height:1.1;font-weight:400;}
-.dx-show-labels .dx-style-card{display:block;min-width:74px;max-width:120px;height:54px;padding:5px 7px;}
+.dx-show-labels .dx-style-card{display:block;min-width:74px;max-width:120px;height:54px;max-height:100%;padding:5px 7px;}
 .dx-show-labels .dx-style-card b{margin-bottom:2px;}
 .dx-ribbon-note{
-  align-self:center;max-width:330px;margin:0 10px;color:var(--dx-muted);font-size:11.5px;line-height:1.4;
+  align-self:center;max-width:330px;max-height:100%;overflow:hidden;margin:0 10px;color:var(--dx-muted);
+  font-size:10.5px;line-height:1.25;
 }
 .dx-ribbon-note b{color:var(--dx-text);font-weight:600;}
 
@@ -576,7 +603,7 @@ window.__ModuleLoader__.load({
 .dx-work{display:flex;flex:1 1 auto;min-height:0;position:relative;}
 .dx-rail{
   display:flex;flex-direction:column;gap:6px;width:236px;flex:0 0 236px;min-height:0;
-  border-right:1px solid var(--dx-border);background:var(--dx-surface);padding:8px;overflow:auto;
+  border-right:1px solid var(--dx-border);background:var(--dx-sidebar);padding:8px;overflow:auto;
 }
 .dx-rail[hidden]{display:none;}
 .dx-rail-head{display:flex;align-items:center;gap:6px;}
@@ -658,7 +685,10 @@ window.__ModuleLoader__.load({
 .dx-run-deleted{text-decoration:line-through;color:#b42318;}
 .dx-run-inserted{text-decoration:underline;text-decoration-style:dotted;color:#0a6b0a;}
 .dx-atom{display:inline-block;vertical-align:baseline;user-select:none;}
-.dx-atom-break::after{content:"\\21B5";color:#9a9a9a;font-size:.85em;}
+/* A line break stays in the inline flow so the br element really ends the line. */
+.dx-atom-break{display:inline;}
+/* ...and its ↵ marker is only drawn with View → Formatting marks on. */
+.dx-marks .dx-atom-break::before{content:"\\21B5";color:#9a9a9a;font-size:.85em;margin-right:1px;}
 .dx-atom-pagebreak{display:block;border-top:1px dashed #b9b7b5;margin:6px 0;height:0;}
 .dx-atom-tab{display:inline-block;width:2em;}
 .dx-img{display:inline-block;max-width:100%;border:1px solid transparent;}
@@ -733,7 +763,7 @@ window.__ModuleLoader__.load({
 }
 .dx-btn:hover:not([disabled]){background:var(--dx-hover);}
 .dx-btn[disabled]{opacity:.45;cursor:not-allowed;}
-.dx-btn.dx-primary{background:var(--dx-accent);border-color:transparent;color:#fff;}
+.dx-btn.dx-primary{background:var(--dx-accent);border-color:transparent;color:var(--dx-on-accent);}
 .dx-btn.dx-danger{border-color:var(--dx-danger);color:var(--dx-danger);}
 .dx-swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;}
 .dx-swatch{width:100%;aspect-ratio:1;border:1px solid var(--dx-border);border-radius:2px;cursor:pointer;padding:0;}
@@ -750,8 +780,10 @@ window.__ModuleLoader__.load({
 /* file tab panels */
 .dx-file-panels{display:flex;gap:0;flex:1 1 auto;min-height:0;}
 /* Compact File commands live in the constant-height ribbon. */
-.dx-file-compact{display:flex;align-items:center;gap:4px;height:100%;width:100%;overflow-x:auto;overflow-y:hidden;padding:0 4px;}
-.dx-file-compact .dx-tool{width:28px;height:28px;}
+.dx-file-compact{display:flex;align-items:center;gap:4px;height:100%;width:100%;overflow-x:auto;overflow-y:hidden;padding:0 4px;scrollbar-width:thin;}
+.dx-file-compact::-webkit-scrollbar{height:6px;}
+.dx-file-compact::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
+.dx-file-compact .dx-tool{width:30px;height:30px;min-width:30px;}
 /* The rich File backstage is an overlay, so it never changes the ribbon height. */
 .dx-backstage{
   position:absolute;left:0;right:0;top:72px;bottom:0;z-index:40;display:flex;flex-direction:column;
@@ -759,9 +791,9 @@ window.__ModuleLoader__.load({
   box-shadow:0 10px 30px rgba(0,0,0,.18);
 }
 .dx-backstage-head{
-  display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--dx-border);
+  display:flex;align-items:center;gap:8px;flex:0 0 auto;min-height:52px;padding:8px 14px;border-bottom:1px solid var(--dx-border);
 }
-.dx-backstage-head h3{margin:0;flex:1 1 auto;font-size:14px;font-weight:600;}
+.dx-backstage-head h3{margin:0;flex:1 1 auto;font-size:14px;font-weight:600;line-height:1.2;}
 .dx-backstage .dx-file-panels{flex:1 1 auto;min-height:0;}
 .dx-file-col{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-right:1px solid var(--dx-border);min-width:230px;}
 .dx-file-col h4{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--dx-muted);}
@@ -3166,6 +3198,7 @@ window.__ModuleLoader__.load({
         "dx-tool",
         item.size === "small" ? "dx-tool-small" : "",
         item.size === "tiny" ? "dx-tool-tiny" : "",
+        item.swatch ? "dx-tool-swatch" : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -3197,7 +3230,7 @@ window.__ModuleLoader__.load({
         );
       } else {
         children.push(
-          h(Icon, { key: "icon", name: item.icon || "page", size: 16 }),
+          h(Icon, { key: "icon", name: item.icon || "page", size: 20 }),
         );
       }
       if (item.swatch)
@@ -4278,7 +4311,7 @@ window.__ModuleLoader__.load({
             disabled: Boolean(reason),
             onClick: () => api.onAction(run),
           },
-          h(Icon, { name: icon, size: 15 }),
+          h(Icon, { name: icon, size: 20 }),
           label,
         );
       };
@@ -4464,7 +4497,7 @@ window.__ModuleLoader__.load({
             disabled: Boolean(reason),
             onClick: () => api.onAction(run),
           },
-          h(Icon, { name: icon, size: 15 }),
+          h(Icon, { name: icon, size: 20 }),
         );
       };
       return h(
@@ -4507,7 +4540,7 @@ window.__ModuleLoader__.load({
                 "aria-expanded": backstage,
                 onClick: () => setBackstage((value) => !value),
               },
-              h(Icon, { name: "chevronDown", size: 15 }),
+              h(Icon, { name: "chevronDown", size: 20 }),
             ),
           ),
         ),
@@ -4533,7 +4566,7 @@ window.__ModuleLoader__.load({
                     "aria-label": "Close File",
                     onClick: closeBackstage,
                   },
-                  h(Icon, { name: "close", size: 15 }),
+                  h(Icon, { name: "close", size: 20 }),
                 ),
               ),
               h(
@@ -4564,7 +4597,7 @@ window.__ModuleLoader__.load({
                           disabled: !ctx.bootstrap,
                           onClick: () => api.onAction("export", format),
                         },
-                        h(Icon, { name: "export", size: 15 }),
+                        h(Icon, { name: "export", size: 20 }),
                         String(format).toUpperCase(),
                       ),
                     ),
@@ -4842,13 +4875,22 @@ window.__ModuleLoader__.load({
             "data-dx-inline": index,
             title: "Page break",
           });
-        return h("span", {
-          key,
-          className: "dx-atom dx-atom-break",
-          "data-dx-atom": "\n",
-          "data-dx-inline": index,
-          title: "Line break",
-        });
+        // A hard line break (DOCX `<w:br/>`, Word's Shift+Enter) must be a real
+        // line break, not an inline atom: a `br` inside the atom wrapper keeps
+        // the one-character offset space (`data-dx-atom` counts it) while the
+        // following text starts on a new line. The ↵ marker is drawn by CSS
+        // only under View → Formatting marks.
+        return h(
+          "span",
+          {
+            key,
+            className: "dx-atom dx-atom-break",
+            "data-dx-atom": "\n",
+            "data-dx-inline": index,
+            title: "Line break",
+          },
+          h("br", null),
+        );
       }
       if (inline.type === "image") {
         const asset = ctx.media.get(inline.mediaId);
@@ -5147,7 +5189,7 @@ window.__ModuleLoader__.load({
       return h(
         "div",
         {
-          className: "dx-editor",
+          className: ctx.showMarks ? "dx-editor dx-marks" : "dx-editor",
           ref: api.surfaceRef,
           role: "document",
           "aria-label": "Document editing surface",
@@ -7022,6 +7064,40 @@ window.__ModuleLoader__.load({
         }
       }, [applyEnvelope, flushPending, patch, placeCaret, reload, reportError]);
 
+      /**
+       * Word's Shift+Enter: a line break inside the current paragraph. The Host
+       * accepts `insertPageBreak` with `kind:"line"`, which splices one `break`
+       * inline at the caret; afterwards the caret sits immediately after that
+       * break, still in the same paragraph.
+       */
+      const insertLineBreakAtCaret = React.useCallback(async () => {
+        const current = stateRef.current;
+        if (!current.bootstrap) return;
+        const selection = normalizeSelection(
+          selectionRef.current,
+          selectionOrderOf(current.bootstrap.document),
+        );
+        if (!selection) return;
+        const blockId = selection.start.blockId;
+        const offset = selection.start.offset || 0;
+        // The break is one character in the offset space, so "after the break"
+        // is offset + 1 in the same paragraph. Passing it as the reload caret
+        // lets the structural-refresh helper restore it once the new model has
+        // been committed (placing it from this callback alone loses the race
+        // with that commit and lands before the break).
+        const target = {
+          start: { blockId, offset: offset + 1 },
+          end: { blockId, offset: offset + 1 },
+        };
+        const result = await performOp(
+          "insertPageBreak",
+          { position: { blockId, offset }, kind: "line" },
+          { reload: true, caret: target },
+        );
+        if (!result) return;
+        placeCaret(target);
+      }, [performOp, placeCaret]);
+
       const mergeBackward = React.useCallback(async () => {
         const current = stateRef.current;
         const document = current.bootstrap ? current.bootstrap.document : null;
@@ -7265,7 +7341,9 @@ window.__ModuleLoader__.load({
           if (!inEditable) return;
           if (event.key === "Enter") {
             event.preventDefault();
-            void splitParagraph();
+            // Word: Enter starts a paragraph, Shift+Enter breaks the line.
+            if (event.shiftKey) void insertLineBreakAtCaret();
+            else void splitParagraph();
             return;
           }
           if (event.key === "Backspace") {
@@ -7327,6 +7405,7 @@ window.__ModuleLoader__.load({
           handleBackspace,
           handleDelete,
           insertAtCaret,
+          insertLineBreakAtCaret,
           isReadOnly,
           selectAllDocument,
           splitParagraph,

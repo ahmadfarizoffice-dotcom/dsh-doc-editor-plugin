@@ -1,11 +1,11 @@
 {
   "name": "dsh-doc-editor-plugin",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "ahmadfarizoffice-dotcom",
-  "description": "Read, create and edit Word-like documents inside DeepSeek Harness: a seven-tab ribbon editor with icon-only commands, native file/folder pickers that open a document as a workspace and chat session, DOCX/Pages/DOC/ODT/RTF/HTML/Markdown, PDF export, and 26 agent document tools.",
+  "description": "Word-like document editor inside DeepSeek Harness: a theme-aware seven-tab ribbon with 20 px icons, open documents from any local folder (native picker, in-panel browser or path) with a prepared workspace and chat session, real line breaks, DOCX/Pages/DOC/ODT/RTF/HTML/Markdown, PDF export and 26 agent tools.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",

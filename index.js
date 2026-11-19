@@ -152,15 +152,6 @@ const DOCUMENT_EXTENSIONS = new Set([
   "xltx",
 ]);
 
-/** True when `candidate` is `root` itself or inside it (lexical check). */
-function isInsidePath(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
-  );
-}
-
 /** Case-insensitive comparison on Windows, exact elsewhere. */
 function samePath(left, right) {
   const a = path.resolve(left);
@@ -170,13 +161,12 @@ function samePath(left, right) {
     : a === b;
 }
 
-/** Real path when the target exists; the resolved path otherwise. */
-async function canonicalPath(target) {
-  const resolved = path.resolve(target);
+/** Real path when the target exists, `undefined` when it does not. */
+async function realPathOf(target) {
   try {
-    return await realpath(resolved);
+    return await realpath(path.resolve(target));
   } catch {
-    return resolved;
+    return undefined;
   }
 }
 
@@ -213,7 +203,27 @@ function driveRoots() {
   return roots.sort();
 }
 
-/** The roots `/browse` offers: Home, the document workspace, cwd and drives. */
+/**
+ * Every local filesystem root this Host can read. Windows exposes the drive
+ * letters that exist (probed with `existsSync`, never a shell); every other
+ * platform has the single `/` root.
+ */
+function filesystemRoots() {
+  return process.platform === "win32" ? driveRoots() : ["/"];
+}
+
+/** True when `candidate` is one of the filesystem roots, not a folder to use. */
+function isFilesystemRoot(candidate) {
+  const resolved = path.resolve(candidate);
+  return filesystemRoots().some((root) => samePath(root, resolved));
+}
+
+/**
+ * The roots `/browse` offers: Home, the document workspace, the session working
+ * directory, then every filesystem root (each existing drive on Windows, `/`
+ * elsewhere). The panel can browse far beyond these roots now; the list is a
+ * set of shortcuts, not a boundary.
+ */
 function browseRoots(workspaceDir) {
   const roots = [];
   const seen = new Set();
@@ -228,64 +238,115 @@ function browseRoots(workspaceDir) {
   add("Home", os.homedir());
   add("Workspace", workspaceDir);
   add("Working directory", process.cwd());
-  for (const drive of driveRoots()) {
-    add(`Local disk (${drive.replace(/\\$/, "")})`, drive);
+  if (process.platform === "win32") {
+    for (const drive of driveRoots()) {
+      add(`Local disk (${drive.replace(/\\$/, "")})`, drive);
+    }
+  } else {
+    add("File system", "/");
   }
   return roots;
 }
 
-/** Roots a browse or open target must stay inside. */
-function browsableRoots(workspaceDir) {
-  return Array.from(
-    new Set(
-      [os.homedir(), workspaceDir, process.cwd()].map((entry) =>
-        path.resolve(entry),
-      ),
-    ),
-  );
+/**
+ * Validates the *shape* of a caller-supplied path before anything touches the
+ * filesystem: it must be an absolute local path, never empty and never carry a
+ * NUL. `..` segments are deliberately allowed here; the path is canonicalized
+ * with `realpath` next, so a traversal can only name a path that really exists
+ * after resolution, and anything that resolves nowhere fails as missing. That
+ * keeps "no `..` escape" true without inventing a root to escape from.
+ */
+function requireAbsolutePath(input, what) {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new HttpError("PATH_REQUIRED", `Give an absolute ${what}.`);
+  }
+  const raw = input.trim();
+  if (raw.includes("\0")) {
+    throw new HttpError("INVALID_PATH", "The path has an invalid character.");
+  }
+  if (!path.isAbsolute(raw)) {
+    throw new HttpError(
+      "INVALID_PATH",
+      `Give an absolute ${what}: relative paths are not resolved against any root.`,
+    );
+  }
+  return raw;
 }
 
 /**
- * True when `candidate` is inside Home, the document workspace or the process
- * cwd. A drive root is accepted only when the caller allows it, which is how
- * the root listing can show `C:\` without exposing the rest of a drive.
+ * Resolves a directory the folder browser may list: any absolute local
+ * directory the Host can realpath, including a filesystem root and a UNC share
+ * the OS resolves. Relative input, a missing target and a file are refused.
  */
-async function isBrowsable(
-  workspaceDir,
-  candidate,
-  { allowDriveRoot = false } = {},
-) {
-  const resolved = await canonicalPath(candidate);
-  for (const root of browsableRoots(workspaceDir)) {
-    if (isInsidePath(await canonicalPath(root), resolved)) return true;
+async function requireBrowsableDirectory(input) {
+  const canonical = await realPathOf(requireAbsolutePath(input, "folder path"));
+  if (!canonical) {
+    throw new HttpError("DIRECTORY_NOT_FOUND", "Folder not found.");
   }
-  return (
-    allowDriveRoot && driveRoots().some((drive) => samePath(drive, resolved))
-  );
+  const info = await stat(canonical).catch(() => undefined);
+  if (!info) throw new HttpError("DIRECTORY_NOT_FOUND", "Folder not found.");
+  if (!info.isDirectory()) {
+    throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+  }
+  return canonical;
 }
 
-/** Resolves a caller-supplied path, or fails with PATH_OUTSIDE_WORKSPACE. */
-async function requireBrowsablePath(workspaceDir, input, options = {}) {
-  if (typeof input !== "string" || !input.trim()) {
-    throw new HttpError("PATH_REQUIRED", "Give an absolute folder path.");
+/**
+ * Resolves a document workspace target: any absolute local directory the Host
+ * can reach, created on demand. A filesystem root is refused because a
+ * workspace keeps its own `documents/` and `audit.log` entries, so `C:\` or `/`
+ * is a mistake rather than a destination.
+ */
+async function requireWorkspaceDirectory(input, { create = false } = {}) {
+  const requested = requireAbsolutePath(input, "folder path");
+  const canonical = await realPathOf(requested);
+  if (canonical) {
+    const info = await stat(canonical).catch(() => undefined);
+    if (info && !info.isDirectory()) {
+      throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+    }
+    if (isFilesystemRoot(canonical)) {
+      throw new HttpError(
+        "INVALID_PATH",
+        "Choose a folder for the workspace, not a filesystem root.",
+      );
+    }
+    return { path: canonical, created: false };
   }
-  const resolved = await canonicalPath(input.trim());
-  if (!(await isBrowsable(workspaceDir, resolved, options))) {
+  if (!create) {
     throw new HttpError(
-      "PATH_OUTSIDE_WORKSPACE",
-      "Folder access is limited to Home, the current document workspace and the session working directory.",
+      "DIRECTORY_NOT_FOUND",
+      "Folder not found; pass create:true to make it.",
     );
   }
-  return resolved;
+  if (isFilesystemRoot(path.resolve(requested))) {
+    throw new HttpError(
+      "INVALID_PATH",
+      "Choose a folder for the workspace, not a filesystem root.",
+    );
+  }
+  await mkdir(path.resolve(requested), { recursive: true });
+  const createdPath = await realPathOf(requested);
+  if (!createdPath) {
+    throw new HttpError("DIRECTORY_NOT_FOUND", "Folder not found.");
+  }
+  return { path: createdPath, created: true };
 }
 
-/** Parent for the browser's Up button, or null at a browse boundary. */
-async function browseParent(workspaceDir, resolved) {
+/** Resolves an open target: any absolute local file the Host can reach. */
+async function requireOpenFile(input) {
+  const canonical = await realPathOf(requireAbsolutePath(input, "file path"));
+  if (!canonical) throw new HttpError("FILE_NOT_FOUND", "File not found.");
+  const info = await stat(canonical).catch(() => undefined);
+  if (!info) throw new HttpError("FILE_NOT_FOUND", "File not found.");
+  if (!info.isFile()) throw new HttpError("NOT_A_FILE", "Not a file.");
+  return canonical;
+}
+
+/** Parent for the browser's Up button, or null at a filesystem root. */
+function browseParent(resolved) {
   const parent = path.dirname(resolved);
-  if (samePath(parent, resolved)) return null;
-  return (await isBrowsable(workspaceDir, parent, { allowDriveRoot: true }))
-    ? parent
-    : null;
+  return samePath(parent, resolved) ? null : parent;
 }
 
 /** Directory entries first, then by name (numeric-aware, case-insensitive). */
@@ -300,11 +361,13 @@ function compareBrowseEntries(left, right) {
 }
 
 /**
- * Lists one directory: names, kinds, sizes only. A symbolic link that resolves
- * outside the browse roots is skipped, and an entry whose `stat` fails is
- * counted as skipped instead of failing the whole listing.
+ * Lists one directory: names, kinds and sizes only — file contents are never
+ * read. Every entry keeps its lexical path under the listed (already
+ * canonicalized) directory; a symlink is listed without changing that declared
+ * path, and browsing it later re-validates wherever it really points. An entry
+ * whose `stat` fails is counted as `skipped` instead of failing the listing.
  */
-async function browseDirectory(workspaceDir, dir, importable) {
+async function browseDirectory(dir, importable) {
   const dirents = await readdir(dir, { withFileTypes: true });
   const scanned = dirents.slice(0, BROWSE_SCAN_LIMIT);
   const entries = [];
@@ -313,16 +376,6 @@ async function browseDirectory(workspaceDir, dir, importable) {
     const full = path.join(dir, dirent.name);
     let info;
     try {
-      if (dirent.isSymbolicLink()) {
-        const target = await canonicalPath(full);
-        const allowed = await isBrowsable(workspaceDir, target, {
-          allowDriveRoot: true,
-        });
-        if (!allowed) {
-          skipped += 1;
-          continue;
-        }
-      }
       info = await stat(full);
     } catch {
       skipped += 1;
@@ -1026,13 +1079,20 @@ export function apply(ctx, config = {}) {
       : DEFAULT_TOOLS;
   const cwdRoot = path.resolve(process.cwd());
   const homeRoot = path.resolve(os.homedir());
+  /** Every filesystem root this Host can read, resolved once per activation. */
+  const readableRoots = filesystemRoots();
 
-  /** Engine options for one document workspace root. */
+  /**
+   * Engine options for one document workspace root. The service is given every
+   * local read root (all drives, or `/`) so the panel and the agent tools can
+   * import a document from any folder the Host can read. The engine still
+   * confines *writes* — save, saveAs and delete stay inside `workspaceRoot`.
+   */
   const engineOptions = (root) => ({
     workspaceRoot: root,
-    // Reads may reach the roots the folder browser shows; writes stay inside
-    // that service's workspace root.
-    allowedReadRoots: Array.from(new Set([root, cwdRoot, homeRoot])),
+    allowedReadRoots: Array.from(
+      new Set([root, cwdRoot, homeRoot, ...readableRoots]),
+    ),
     readOnly,
     auditPath: path.join(root, "audit.log"),
   });
@@ -1267,30 +1327,17 @@ export function apply(ctx, config = {}) {
                   json(res, 200, { ok: true, roots });
                   return;
                 }
-                const target = await requireBrowsablePath(
-                  activeRoot,
-                  requested,
-                  {
-                    allowDriveRoot: true,
-                  },
-                );
-                const info = await stat(target).catch(() => undefined);
-                if (!info) {
-                  throw new HttpError("FILE_NOT_FOUND", "Folder not found.");
-                }
-                if (!info.isDirectory()) {
-                  throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
-                }
+                // Any absolute local directory the Host can realpath: another
+                // drive, a public/shared folder, or a project outside the
+                // session working directory. `realpath` resolves `..` before
+                // the listing, so a traversal only names a real directory.
+                const target = await requireBrowsableDirectory(requested);
                 const importable = await importableExtensions(svc);
-                const listing = await browseDirectory(
-                  activeRoot,
-                  target,
-                  importable,
-                );
+                const listing = await browseDirectory(target, importable);
                 json(res, 200, {
                   ok: true,
                   path: target,
-                  parent: await browseParent(activeRoot, target),
+                  parent: browseParent(target),
                   roots,
                   entries: listing.entries,
                   truncated: listing.truncated,
@@ -1319,25 +1366,14 @@ export function apply(ctx, config = {}) {
                     "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
                   );
                 }
-                const target = await requireBrowsablePath(
-                  activeRoot,
+                // Any absolute local directory, not just Home/workspace/cwd.
+                // A filesystem root is refused as a workspace target.
+                const targetDirectory = await requireWorkspaceDirectory(
                   body.path,
+                  { create },
                 );
-                const info = await stat(target).catch(() => undefined);
-                if (info && !info.isDirectory()) {
-                  throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
-                }
-                let created = false;
-                if (!info) {
-                  if (!create) {
-                    throw new HttpError(
-                      "DIRECTORY_NOT_FOUND",
-                      "Folder not found; pass create:true to make it.",
-                    );
-                  }
-                  await mkdir(target, { recursive: true });
-                  created = true;
-                }
+                const target = targetDirectory.path;
+                const created = targetDirectory.created;
 
                 if (!samePath(target, workspaceDir)) {
                   // Build and initialize the replacement before switching so a
@@ -1390,17 +1426,9 @@ export function apply(ctx, config = {}) {
               }
 
               if (method === "POST" && route === "/open-path") {
-                const target = await requireBrowsablePath(
-                  activeRoot,
-                  body.path,
-                );
-                const info = await stat(target).catch(() => undefined);
-                if (!info) {
-                  throw new HttpError("FILE_NOT_FOUND", "File not found.");
-                }
-                if (!info.isFile()) {
-                  throw new HttpError("NOT_A_FILE", "Not a file.");
-                }
+                // Any absolute local file the Host can read; the importable
+                // extension gate below is the only format restriction.
+                const target = await requireOpenFile(body.path);
                 const importable = await importableExtensions(svc);
                 if (!importable.has(extensionOf(target))) {
                   throw new HttpError(
@@ -1415,7 +1443,7 @@ export function apply(ctx, config = {}) {
                   .find(
                     (session) =>
                       session.filePath !== undefined &&
-                      path.resolve(session.filePath) === target,
+                      samePath(session.filePath, target),
                   );
                 if (alreadyOpen) {
                   json(res, 200, {

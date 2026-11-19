@@ -3,6 +3,13 @@
  * path-opening tests for the "Workspaces, folder browsing and opening files"
  * section of `dsh-plugin/EDITOR-API.md`.
  *
+ * The rule these tests pin down is "any absolute local directory the Host can
+ * read". Browsing, switching the workspace and opening a file must work from a
+ * folder outside Home, the document workspace and the session working
+ * directory, while shape rules stay: absolute paths only, `..` canonicalized
+ * before use, directories and files distinguished, importable extensions only
+ * for opening, and listings that never carry file contents.
+ *
  * Run with: `node --test dsh-plugin/test/host-browse.test.mjs`
  *
  * The Host module imports `./engine.js`, which only exists in the built bundle,
@@ -17,10 +24,12 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -186,18 +195,69 @@ async function call(handler, options = {}) {
 
 const temporary = [];
 
-/** A temp directory inside the session working directory (a browse root). */
+after(async () => {
+  for (const dir of temporary.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/** A temp directory inside the session working directory (an old browse root). */
 async function tempDir(prefix) {
   const dir = await mkdtemp(path.join(process.cwd(), prefix));
   temporary.push(dir);
   return dir;
 }
 
-after(async () => {
-  for (const dir of temporary.splice(0)) {
-    await rm(dir, { recursive: true, force: true });
+/**
+ * A temp directory the browser used to refuse: outside the document workspace
+ * and outside the session working directory. Windows exposes no writable folder
+ * that is *always* outside the profile, so the first writable candidate wins;
+ * `os.tmpdir()` is the portable fallback.
+ */
+async function outsideDir(prefix) {
+  const candidates = [];
+  if (process.platform === "win32") {
+    candidates.push(
+      path.join(
+        `${String(process.env.SystemDrive ?? "C:")
+          .slice(0, 1)
+          .toUpperCase()}:\\`,
+        "Windows",
+        "Temp",
+      ),
+    );
+    candidates.push(
+      path.join(process.env.PUBLIC ?? "C:\\Users\\Public", "Documents"),
+    );
+    candidates.push("C:\\ProgramData");
   }
-});
+  candidates.push(os.tmpdir());
+  for (const base of candidates) {
+    try {
+      if (!(await stat(base)).isDirectory()) continue;
+      const dir = await mkdtemp(path.join(base, prefix));
+      temporary.push(dir);
+      return dir;
+    } catch {
+      // Not writable here; try the next candidate.
+    }
+  }
+  throw new Error("no writable temp folder is available for this test");
+}
+
+/** Lexical "is `candidate` inside `root`" used only to prove the setup. */
+function isInsidePath(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+/** The path a route is expected to report (realpath, not the typed path). */
+function canonical(target) {
+  return realpath(path.resolve(target));
+}
 
 async function createDocument(handler, title, text = "Hello") {
   const res = await call(handler, {
@@ -220,7 +280,7 @@ async function bootstrap(handler, documentId) {
 
 /* ------------------------------------------------------------------ tests */
 
-test("GET /browse without a path lists Home, the workspace and the cwd", async () => {
+test("GET /browse without a path lists Home, the workspace, the cwd and filesystem roots", async () => {
   const workspace = await tempDir("dsh-doc-roots-");
   const host = startHost({ workspaceDir: workspace });
   const res = await call(host.handler, { route: "/browse" });
@@ -248,17 +308,36 @@ test("GET /browse without a path lists Home, the workspace and the cwd", async (
       .slice(0, 1)
       .toUpperCase()}:\\`;
     assert.ok(
-      drives.some((root) => root.path === system),
+      drives.some((root) => root.path.toUpperCase() === system),
       `the ${system} drive root must be listed`,
+    );
+    assert.ok(
+      res.json.roots.some((root) => root.label.startsWith("Local disk (")),
+      "drive roots are offered as shortcuts",
+    );
+  } else {
+    assert.ok(
+      res.json.roots.some((root) => root.path === "/"),
+      "POSIX must expose the / root",
     );
   }
 });
 
-test("GET /browse lists directories first with kinds and importable flags", async () => {
-  const workspace = await tempDir("dsh-doc-list-");
+test("GET /browse lists a folder outside Home, the workspace and the cwd", async () => {
+  const workspace = await tempDir("dsh-doc-outside-ws-");
   const host = startHost({ workspaceDir: workspace });
+  const base = await outsideDir("dsh-doc-anywhere-");
+  // The point of the change: this folder is outside every root the Host used to
+  // confine browsing to (Home is checked only when the platform allows it).
+  assert.ok(
+    !isInsidePath(workspace, base),
+    "the fixture folder must stay outside the document workspace",
+  );
+  assert.ok(
+    !isInsidePath(process.cwd(), base),
+    "the fixture folder must stay outside the session working directory",
+  );
 
-  const base = await tempDir("dsh-doc-list-base-");
   const folder = path.join(base, "Reports");
   await mkdir(path.join(folder, "Archive"), { recursive: true });
   const docxPath = path.join(folder, "Q3 report.docx");
@@ -266,12 +345,13 @@ test("GET /browse lists directories first with kinds and importable flags", asyn
   await writeFile(path.join(folder, "notes.txt"), "notes", "utf8");
   await writeFile(path.join(folder, "data.bin"), Buffer.from([1, 2, 3]));
 
+  const folderPath = await canonical(folder);
   const res = await call(host.handler, {
     route: `/browse?path=${encodeURIComponent(folder)}`,
   });
   assert.equal(res.json.ok, true, JSON.stringify(res.json));
-  assert.equal(res.json.path, path.resolve(folder));
-  assert.equal(res.json.parent, path.resolve(base));
+  assert.equal(res.json.path, folderPath);
+  assert.equal(res.json.parent, path.dirname(folderPath));
   assert.equal(res.json.truncated, false);
   assert.equal(res.json.skipped, 0);
 
@@ -288,13 +368,23 @@ test("GET /browse lists directories first with kinds and importable flags", asyn
   assert.equal(archive.kind, "directory");
   assert.equal(archive.importable, false);
   assert.equal(archive.size, undefined, "directories have no size");
+  assert.deepEqual(
+    Object.keys(archive).sort(),
+    ["importable", "kind", "name", "path"],
+    "a listing entry carries metadata only, never file contents",
+  );
 
   const docx = byName.get("Q3 report.docx");
   assert.equal(docx.kind, "document");
   assert.equal(docx.importable, true);
-  assert.equal(docx.path, docxPath);
+  assert.equal(docx.path, path.join(folderPath, "Q3 report.docx"));
   assert.equal(docx.size, (await stat(docxPath)).size);
   assert.ok(!Number.isNaN(Date.parse(docx.modified)));
+  assert.deepEqual(
+    Object.keys(docx).sort(),
+    ["importable", "kind", "modified", "name", "path", "size"],
+    "a file entry has size/modified but no contents field",
+  );
 
   const text = byName.get("notes.txt");
   assert.equal(text.kind, "document");
@@ -303,23 +393,101 @@ test("GET /browse lists directories first with kinds and importable flags", asyn
   const binary = byName.get("data.bin");
   assert.equal(binary.kind, "other");
   assert.equal(binary.importable, false);
+
+  // Every entry keeps a lexical path under the declared, canonical directory.
+  for (const entry of res.json.entries) {
+    assert.equal(path.dirname(entry.path), folderPath);
+  }
 });
 
-test("GET /browse refuses paths outside the browse roots", async () => {
-  const workspace = await tempDir("dsh-doc-outside-");
+test("GET /browse accepts system folders that used to be refused", async () => {
+  const workspace = await tempDir("dsh-doc-system-");
   const host = startHost({ workspaceDir: workspace });
-  const outside = process.platform === "win32" ? "C:\\Windows" : "/etc";
+  const system = process.platform === "win32" ? "C:\\Windows" : "/etc";
   const res = await call(host.handler, {
-    route: `/browse?path=${encodeURIComponent(outside)}`,
+    route: `/browse?path=${encodeURIComponent(system)}`,
   });
-  assert.equal(res.json.ok, false, JSON.stringify(res.json));
-  assert.equal(res.json.error.code, "PATH_OUTSIDE_WORKSPACE");
+  assert.equal(res.json.ok, true, JSON.stringify(res.json));
+  assert.equal(res.json.path, await canonical(system));
+  assert.ok(Array.isArray(res.json.entries));
+  assert.equal(res.json.parent, path.dirname(await canonical(system)));
+});
+
+test("GET /browse lists a filesystem root without throwing", async () => {
+  const workspace = await tempDir("dsh-doc-root-");
+  const host = startHost({ workspaceDir: workspace });
+  const root =
+    process.platform === "win32"
+      ? `${String(process.env.SystemDrive ?? "C:")
+          .slice(0, 1)
+          .toUpperCase()}:\\`
+      : "/";
+  const res = await call(host.handler, {
+    route: `/browse?path=${encodeURIComponent(root)}`,
+  });
+  assert.equal(res.json.ok, true, JSON.stringify(res.json));
+  assert.equal(res.json.parent, null, "a filesystem root has no parent");
+  assert.ok(Array.isArray(res.json.entries));
+  assert.equal(typeof res.json.skipped, "number");
+  assert.ok(res.json.skipped >= 0);
+  // Permission-denied entries are counted, never fatal: a root still lists.
+  assert.ok(
+    res.json.entries.length + res.json.skipped > 0,
+    "a filesystem root returns entries or an explicit skipped count",
+  );
+});
+
+test("GET /browse rejects relative input, missing folders and files", async () => {
+  const workspace = await tempDir("dsh-doc-invalid-");
+  const host = startHost({ workspaceDir: workspace });
+
+  const relative = await call(host.handler, {
+    route: `/browse?path=${encodeURIComponent("relative/folder")}`,
+  });
+  assert.equal(relative.json.ok, false, JSON.stringify(relative.json));
+  assert.equal(relative.json.error.code, "INVALID_PATH");
 
   const missing = await call(host.handler, {
     route: `/browse?path=${encodeURIComponent(path.join(workspace, "absent"))}`,
   });
   assert.equal(missing.json.ok, false);
-  assert.equal(missing.json.error.code, "FILE_NOT_FOUND");
+  assert.equal(missing.json.error.code, "DIRECTORY_NOT_FOUND");
+
+  const asDirectory = await call(host.handler, {
+    route: `/browse?path=${encodeURIComponent(FIXTURE_DOCX)}`,
+  });
+  assert.equal(asDirectory.json.ok, false);
+  assert.equal(asDirectory.json.error.code, "NOT_A_DIRECTORY");
+});
+
+test("GET /browse canonicalizes .. instead of confining it", async () => {
+  const workspace = await tempDir("dsh-doc-dots-");
+  const host = startHost({ workspaceDir: workspace });
+  const base = await outsideDir("dsh-doc-dots-base-");
+  const deep = path.join(base, "Reports", "2026");
+  await mkdir(deep, { recursive: true });
+  await writeFile(path.join(deep, "notes.txt"), "notes", "utf8");
+
+  // Escaping out of Reports/2026 with `..` still names a real directory, so it
+  // is allowed: the path is canonicalized before anything is listed.
+  const traversal = path.join(deep, "..", "..");
+  const res = await call(host.handler, {
+    route: `/browse?path=${encodeURIComponent(traversal)}`,
+  });
+  assert.equal(res.json.ok, true, JSON.stringify(res.json));
+  assert.equal(res.json.path, await canonical(base));
+  assert.ok(
+    res.json.entries.some((entry) => entry.name === "Reports"),
+    "the canonicalized parent is listed",
+  );
+
+  // The same shape that resolves nowhere is a missing folder, not an escape.
+  const nowhere = path.join(deep, "..", "no-such-folder-here");
+  const missing = await call(host.handler, {
+    route: `/browse?path=${encodeURIComponent(nowhere)}`,
+  });
+  assert.equal(missing.json.ok, false, JSON.stringify(missing.json));
+  assert.equal(missing.json.error.code, "DIRECTORY_NOT_FOUND");
 });
 
 test("GET /browse caps a listing at 500 entries and says it truncated", async () => {
@@ -362,97 +530,68 @@ test("GET /workspace reports the active workspace and open documents", async () 
   assert.equal(entry.title, "Listed document");
 });
 
-test("POST /workspace switches roots, retires sessions and reuses the registry", async () => {
+test("POST /workspace switches to a folder outside every old root", async () => {
   const registry = fakeRegistry();
-  const workspace = await tempDir("dsh-doc-ws-");
+  const workspace = await tempDir("dsh-doc-ws-outside-");
   const host = startHost(
     { workspaceDir: workspace },
     { workspaceRegistry: registry },
   );
-  const oldDocument = await createDocument(
-    host.handler,
-    "Before switch",
-    "old",
-  );
+  const outside = await outsideDir("dsh-doc-ws-switch-");
+  assert.ok(!isInsidePath(workspace, outside));
 
-  const nextRoot = await tempDir("dsh-doc-ws-next-");
   const switched = await call(host.handler, {
     method: "POST",
     route: "/workspace",
-    body: { path: nextRoot },
+    body: { path: outside },
   });
   assert.equal(switched.json.ok, true, JSON.stringify(switched.json));
-  assert.equal(switched.json.path, path.resolve(nextRoot));
+  const outsidePath = await canonical(outside);
+  assert.equal(switched.json.path, outsidePath);
   assert.equal(switched.json.created, false);
   assert.equal(switched.json.dshWorkspaceId, "ws-1");
   assert.equal(registry.calls[0].method, "resolveByPath");
-  assert.equal(registry.calls[0].path, path.resolve(nextRoot));
+  assert.equal(registry.calls[0].path, outsidePath);
   assert.equal(registry.calls[1].method, "create");
-  assert.equal(registry.calls[1].path, path.resolve(nextRoot));
-  assert.equal(registry.calls[1].name, path.basename(nextRoot));
+  assert.equal(registry.calls[1].path, outsidePath);
+  assert.equal(registry.calls[1].name, path.basename(outsidePath));
 
-  const current = await call(host.handler, { route: "/workspace" });
-  assert.equal(current.json.path, path.resolve(nextRoot));
-  assert.ok(
-    current.json.documents.some((row) => row.id === oldDocument),
-    "documents opened before the switch stay listed",
-  );
-
-  // The pre-switch document is not destroyed: it still bootstraps, edits and
-  // saves inside its original workspace.
-  const oldModel = await bootstrap(host.handler, oldDocument);
-  assert.equal(oldModel.workspace, path.resolve(nextRoot));
-  const edited = await call(host.handler, {
-    method: "POST",
-    route: "/op",
-    body: {
-      id: oldDocument,
-      op: "insertText",
-      args: { position: { blockId: "p1", offset: 3 }, text: "-kept-" },
-    },
-  });
-  assert.equal(edited.json.ok, true, JSON.stringify(edited.json));
-
-  // New documents land in the new root.
-  const newDocument = await createDocument(host.handler, "After switch", "new");
-  const newModel = await bootstrap(host.handler, newDocument);
-  assert.equal(newModel.workspace, path.resolve(nextRoot));
-  const stored = path.join(nextRoot, "documents", newDocument, "document.json");
-  assert.ok((await stat(stored)).isFile(), `expected ${stored}`);
-  const previous = path.join(
-    workspace,
+  // New documents land under that outside root, not under the old workspace.
+  const documentId = await createDocument(host.handler, "Outside document");
+  const model = await bootstrap(host.handler, documentId);
+  assert.equal(model.workspace, outsidePath);
+  const stored = path.join(
+    outsidePath,
     "documents",
-    oldDocument,
+    documentId,
     "document.json",
   );
-  assert.ok((await stat(previous)).isFile(), "the old root keeps its document");
+  assert.ok((await stat(stored)).isFile(), `expected ${stored}`);
 
-  // A second switch to the same folder reuses the registry entry.
+  // The same folder reuses its registry entry instead of creating another.
   const again = await call(host.handler, {
     method: "POST",
     route: "/workspace",
-    body: { path: nextRoot },
+    body: { path: outside },
   });
   assert.equal(again.json.ok, true, JSON.stringify(again.json));
   assert.equal(again.json.dshWorkspaceId, "ws-1");
-  assert.equal(again.json.created, false);
   assert.equal(
     registry.calls.filter((row) => row.method === "create").length,
     1,
     "create must not run twice for the same folder",
   );
-  assert.equal(
-    registry.calls.filter((row) => row.method === "resolveByPath").length,
-    2,
-  );
-  const stillThere = await bootstrap(host.handler, oldDocument);
-  assert.equal(stillThere.ok, true, "the retired document is still readable");
 });
 
-test("POST /workspace creates a folder with create:true and warns without a registry", async () => {
+test("POST /workspace creates an absent outside folder and refuses bad targets", async () => {
+  const registry = fakeRegistry();
   const workspace = await tempDir("dsh-doc-wsc-");
-  const host = startHost({ workspaceDir: workspace });
-  const target = path.join(workspace, "brand", "new");
+  const host = startHost(
+    { workspaceDir: workspace },
+    { workspaceRegistry: registry },
+  );
+  const base = await outsideDir("dsh-doc-wsc-outside-");
+  const target = path.join(base, "brand", "new");
   const created = await call(host.handler, {
     method: "POST",
     route: "/workspace",
@@ -460,32 +599,70 @@ test("POST /workspace creates a folder with create:true and warns without a regi
   });
   assert.equal(created.json.ok, true, JSON.stringify(created.json));
   assert.equal(created.json.created, true);
-  assert.equal(created.json.path, path.resolve(target));
-  assert.equal(created.json.dshWorkspaceId, undefined);
-  assert.equal(created.json.warning, "workspace-registry-unavailable");
-  assert.ok((await stat(target)).isDirectory());
+  const targetPath = await canonical(target);
+  assert.equal(created.json.path, targetPath);
+  assert.equal(created.json.dshWorkspaceId, "ws-1");
+  assert.ok((await stat(targetPath)).isDirectory());
+
+  // A document created after that switch lands under the created root.
+  const documentId = await createDocument(host.handler, "Brand new");
+  const model = await bootstrap(host.handler, documentId);
+  assert.equal(model.workspace, targetPath);
+  assert.ok(
+    (
+      await stat(
+        path.join(targetPath, "documents", documentId, "document.json"),
+      )
+    ).isFile(),
+    "the created workspace stores its own documents",
+  );
 
   const missing = await call(host.handler, {
     method: "POST",
     route: "/workspace",
-    body: { path: path.join(workspace, "never-made") },
+    body: { path: path.join(base, "never-made") },
   });
   assert.equal(missing.json.ok, false);
   assert.equal(missing.json.error.code, "DIRECTORY_NOT_FOUND");
 
-  const outside = await call(host.handler, {
+  // A relative path never names a folder, and a file is not a workspace.
+  const relative = await call(host.handler, {
     method: "POST",
     route: "/workspace",
-    body: { path: process.platform === "win32" ? "C:\\Windows" : "/etc" },
+    body: { path: "relative/folder" },
   });
-  assert.equal(outside.json.ok, false);
-  assert.equal(outside.json.error.code, "PATH_OUTSIDE_WORKSPACE");
+  assert.equal(relative.json.ok, false);
+  assert.equal(relative.json.error.code, "INVALID_PATH");
+
+  const asFolder = await call(host.handler, {
+    method: "POST",
+    route: "/workspace",
+    body: { path: FIXTURE_DOCX },
+  });
+  assert.equal(asFolder.json.ok, false);
+  assert.equal(asFolder.json.error.code, "NOT_A_DIRECTORY");
+
+  // A filesystem root is a typo for a workspace, not a destination.
+  const root =
+    process.platform === "win32"
+      ? `${String(process.env.SystemDrive ?? "C:")
+          .slice(0, 1)
+          .toUpperCase()}:\\`
+      : "/";
+  const rootRefused = await call(host.handler, {
+    method: "POST",
+    route: "/workspace",
+    body: { path: root },
+  });
+  assert.equal(rootRefused.json.ok, false, JSON.stringify(rootRefused.json));
+  assert.equal(rootRefused.json.error.code, "INVALID_PATH");
 });
 
-test("POST /open-path opens a browsed DOCX and rejects bad targets", async () => {
+test("POST /open-path opens a DOCX from any local folder", async () => {
   const workspace = await tempDir("dsh-doc-open-");
   const host = startHost({ workspaceDir: workspace });
-  const folder = await tempDir("dsh-doc-open-src-");
+  const folder = await outsideDir("dsh-doc-open-any-");
+  assert.ok(!isInsidePath(workspace, folder));
   const docxPath = path.join(folder, "Seed.docx");
   await copyFile(FIXTURE_DOCX, docxPath);
   await writeFile(path.join(folder, "weird.xyz"), "not a document", "utf8");
@@ -504,8 +681,8 @@ test("POST /open-path opens a browsed DOCX and rejects bad targets", async () =>
   });
   assert.equal(opened.json.ok, true, JSON.stringify(opened.json));
   assert.equal(typeof opened.json.documentId, "string");
-  assert.equal(opened.json.path, path.resolve(docxPath));
-  assert.equal(opened.json.directory, path.resolve(folder));
+  assert.equal(opened.json.path, await canonical(docxPath));
+  assert.equal(opened.json.directory, await canonical(folder));
   assert.equal(typeof opened.json.title, "string");
   assert.ok(Array.isArray(opened.json.warnings));
 
@@ -528,18 +705,69 @@ test("POST /open-path opens a browsed DOCX and rejects bad targets", async () =>
   assert.equal(missing.json.ok, false);
   assert.equal(missing.json.error.code, "FILE_NOT_FOUND");
 
-  const outside = await call(host.handler, {
+  const asFile = await call(host.handler, {
     method: "POST",
     route: "/open-path",
+    body: { path: folder },
+  });
+  assert.equal(asFile.json.ok, false);
+  assert.equal(asFile.json.error.code, "NOT_A_FILE");
+
+  const relative = await call(host.handler, {
+    method: "POST",
+    route: "/open-path",
+    body: { path: "Seed.docx" },
+  });
+  assert.equal(relative.json.ok, false);
+  assert.equal(relative.json.error.code, "INVALID_PATH");
+});
+
+test("POST /workspace keeps sessions opened before an outside switch", async () => {
+  const workspace = await tempDir("dsh-doc-ws-retire-");
+  const host = startHost({ workspaceDir: workspace });
+  const oldDocument = await createDocument(
+    host.handler,
+    "Before switch",
+    "old",
+  );
+
+  const nextRoot = await outsideDir("dsh-doc-ws-retire-next-");
+  const switched = await call(host.handler, {
+    method: "POST",
+    route: "/workspace",
+    body: { path: nextRoot },
+  });
+  assert.equal(switched.json.ok, true, JSON.stringify(switched.json));
+
+  const current = await call(host.handler, { route: "/workspace" });
+  assert.equal(current.json.path, await canonical(nextRoot));
+  assert.ok(
+    current.json.documents.some((row) => row.id === oldDocument),
+    "documents opened before the switch stay listed",
+  );
+
+  // The pre-switch document is not destroyed: it still bootstraps and edits,
+  // and its model keeps living in the workspace it was created in.
+  const oldModel = await bootstrap(host.handler, oldDocument);
+  assert.equal(oldModel.documentId, oldDocument);
+  const edited = await call(host.handler, {
+    method: "POST",
+    route: "/op",
     body: {
-      path:
-        process.platform === "win32"
-          ? "C:\\Windows\\System32\\drivers\\etc\\hosts.docx"
-          : "/etc/hosts.docx",
+      id: oldDocument,
+      op: "insertText",
+      args: { position: { blockId: "p1", offset: 3 }, text: "-kept-" },
     },
   });
-  assert.equal(outside.json.ok, false);
-  assert.equal(outside.json.error.code, "PATH_OUTSIDE_WORKSPACE");
+  assert.equal(edited.json.ok, true, JSON.stringify(edited.json));
+  assert.ok(
+    (
+      await stat(
+        path.join(workspace, "documents", oldDocument, "document.json"),
+      )
+    ).isFile(),
+    "the old root keeps its document",
+  );
 });
 
 test("POST /open returns the directory of the imported copy", async () => {
@@ -605,7 +833,8 @@ test("POST /open accepts a multipart upload and saves it in the workspace", asyn
 test("read-only mode refuses create:true but still switches existing folders", async () => {
   const workspace = await tempDir("dsh-doc-ro-");
   const host = startHost({ workspaceDir: workspace, readOnly: true });
-  const target = path.join(workspace, "new-folder");
+  const base = await outsideDir("dsh-doc-ro-outside-");
+  const target = path.join(base, "new-folder");
   const refused = await call(host.handler, {
     method: "POST",
     route: "/workspace",
@@ -613,8 +842,12 @@ test("read-only mode refuses create:true but still switches existing folders", a
   });
   assert.equal(refused.json.ok, false);
   assert.equal(refused.json.error.code, "READ_ONLY_MODE");
+  await assert.rejects(
+    stat(target),
+    "read-only mode must not create the folder",
+  );
 
-  const other = await tempDir("dsh-doc-ro-next-");
+  const other = await outsideDir("dsh-doc-ro-next-");
   const switched = await call(host.handler, {
     method: "POST",
     route: "/workspace",
@@ -622,10 +855,15 @@ test("read-only mode refuses create:true but still switches existing folders", a
   });
   assert.equal(switched.json.ok, true, JSON.stringify(switched.json));
   assert.equal(switched.json.created, false);
+  assert.equal(
+    switched.json.warning,
+    "workspace-registry-unavailable",
+    "without a registry the switch still succeeds and says why there is no id",
+  );
 
   const current = await call(host.handler, { route: "/workspace" });
   assert.equal(current.json.readOnly, true, "read-only mode survives a switch");
-  assert.equal(current.json.path, path.resolve(other));
+  assert.equal(current.json.path, await canonical(other));
 
   const created = await call(host.handler, {
     method: "POST",

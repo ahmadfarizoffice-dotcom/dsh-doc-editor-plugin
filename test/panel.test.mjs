@@ -598,7 +598,7 @@ test("ribbon tools are icon-only by default and Show labels restores text", () =
   const compact = render({ tab: "home" });
   // No label nodes at all; the stylesheet rule alone is not a label.
   assert.ok(!compact.includes('class="dx-tool-label"'));
-  assert.match(compact, /\.dx-tool\{[^}]*width:28px;height:28px/);
+  assert.match(compact, /\.dx-tool\{[^}]*width:30px;height:30px/);
 
   // The tooltip and the accessible name both survive, and the shortcut is in
   // the tooltip where the editor implements one.

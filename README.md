@@ -64,13 +64,25 @@ preview:
 
 - **Ribbon with the seven Word tabs**: File · Home · Insert · Design · Layout ·
   References · View. The ribbon keeps **exactly 1/16 of the window height on every
-  tab**, so switching tabs never moves the document; wide tabs scroll sideways
-  instead of growing taller, and the rich File details open as an overlay
-  (New, Open, Export, Information, open documents) while the ribbon height stays
-  fixed. Each tab is grouped the way Word groups its commands (Home: Undo,
-  Clipboard, Font, Paragraph, Styles, Editing; Insert: Pages, Tables,
-  Illustrations, Links, Header & Footer, Text, Symbols; and so on), and the
-  ribbon collapses with the chevron.
+  tab** (never below 56 px, so captions and labels are not clipped), so switching
+  tabs never moves the document; wide tabs scroll sideways instead of growing
+  taller, and the rich File details open as an overlay (New, Open, Export,
+  Information, open documents) while the ribbon height stays fixed. Icons are
+  **20 px with a 1.8 px stroke** and take their colour from the DeepSeek Harness
+  theme tokens (`--dsw-alias-label-primary`, `--dsw-alias-brand-primary`, …), so
+  they stay legible in light and dark mode instead of being washed out.
+- **Any local folder**: **File → Choose folder…** opens the operating system's
+  folder dialog and then an in-panel browser that can now list **any absolute
+  local directory** (all drives, network shares the OS resolves, any project
+  folder), not only the workspace or home directory; **Open document…** uses the
+  system file dialog, and _Advanced: path_ accepts an absolute path anywhere on
+  disk. Opening a file switches the document workspace to its folder, reuses an
+  already-open session for the same file, names the document after the file and
+  prepares a Harness workspace plus a chat session there (_Chat ready_ chip).
+- **Real multiline paragraphs**: DOCX hard line breaks (`<w:br/>`), Word's
+  Shift+Enter and imported multiline text render as real line breaks inside one
+  paragraph (the ↵ mark appears only with View → Formatting marks), and
+  Shift+Enter inserts a line break instead of splitting the paragraph.
 - **Compact, icon-only commands**: buttons show only their icon and reveal the
   command name and shortcut in a hover tooltip (`Bold (Ctrl+B)`). **View → Show
   labels** restores text labels for anyone who prefers them, and the choice is

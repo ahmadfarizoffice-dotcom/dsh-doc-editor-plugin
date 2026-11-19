@@ -18,24 +18,34 @@ unavailable. Two Host routes back the pickers and one switches the document
 workspace; opening a document also prepares a Harness workspace and chat
 session at the file's folder.
 
+**The rule: any absolute local directory (or file) the Host process can read.**
+A document may live on another volume (`D:\Docs`), in a shared folder
+(`C:\Users\Public\Documents`), or in a project outside the session working
+directory. The old Home/workspace/cwd confinement is gone; what remains is the
+path _shape_ (absolute, canonicalized, real) and the importable-extension gate
+for opening. Reads are read-only and never execute or parse a file to build a
+listing.
+
 ### `GET /browse?path=<absolute directory>`
 
-Lists one directory for the in-panel folder browser. With no `path`, returns the
-browse roots.
+Lists one directory for the in-panel folder browser. With no `path` (or an
+empty one), returns the browse roots.
 
 ```json
 {
   "ok": true,
-  "path": "C:\\Users\\me\\Documents\\Reports",
-  "parent": "C:\\Users\\me\\Documents",
+  "path": "D:\\Docs\\Reports",
+  "parent": "D:\\Docs",
   "roots": [
     { "label": "Home", "path": "C:\\Users\\me" },
-    { "label": "Workspace", "path": "…" }
+    { "label": "Workspace", "path": "…" },
+    { "label": "Working directory", "path": "…" },
+    { "label": "Local disk (D:)", "path": "D:\\" }
   ],
   "entries": [
     {
       "name": "Q3 report.docx",
-      "path": "…\\Q3 report.docx",
+      "path": "D:\\Docs\\Reports\\Q3 report.docx",
       "kind": "document",
       "importable": true,
       "size": 41233,
@@ -43,20 +53,42 @@ browse roots.
     },
     {
       "name": "Archive",
-      "path": "…\\Archive",
+      "path": "D:\\Docs\\Reports\\Archive",
       "kind": "directory",
       "importable": false
     }
   ],
-  "truncated": false
+  "truncated": false,
+  "skipped": 0
 }
 ```
 
-Browsing is **read-only** and limited to the user's home directory, the current
-document workspace and the session working directory; the root listing also
-exposes drive roots on Windows. Paths outside those roots fail with
-`PATH_OUTSIDE_WORKSPACE`. Files are never executed, and only names/sizes are
-returned — never contents.
+`roots` is a shortcut list, not a boundary: Home, the current document
+workspace, the session working directory, then every existing filesystem root
+(each drive letter on Windows, probed without a shell; `/` on other platforms).
+
+Browsing rules:
+
+- Absolute paths only. A missing or empty `path` asks for the root list;
+  a relative path fails with `INVALID_PATH`.
+- The requested path is canonicalized with `realpath` before use. `..` is
+  therefore allowed when it lands on a real directory (`D:\a\..\b` names
+  `D:\b`) and fails with `DIRECTORY_NOT_FOUND` when the resolved target does
+  not exist. A `..` never names a path the Host has not resolved.
+- A file passed as a directory fails with `NOT_A_DIRECTORY`.
+- `parent` is the containing directory, or `null` at a filesystem root.
+- `entries` is sorted directories-first then by name; `kind` is
+  `directory`, `document` or `other`, and `importable` comes from this build's
+  format registry (never from the extension list the browser uses for `kind`).
+  At most 500 entries are returned; `truncated` says more were found.
+- An entry whose `stat` fails (permission denied, dangling symlink) is counted
+  in `skipped` instead of failing the whole listing. A directory that cannot be
+  read at all returns the route error.
+- Only names, kinds, sizes and timestamps are returned — never file contents.
+  A symlinked entry keeps its lexical path inside the listed directory;
+  browsing it later re-validates wherever it really points.
+- UNC shares (`\\server\share`) are browsable when the OS resolves them; the
+  same `realpath` rule applies.
 
 ### `GET /workspace`
 
@@ -66,19 +98,34 @@ returned — never contents.
 
 ### `POST /workspace { "path": "<absolute directory>", "create": false }`
 
-Switches the panel's document workspace to `path` (created when `create` is
-true, which the folder picker uses for a new folder). It also **finds or
-creates the Harness workspace** for that directory through the Host's
-`workspaceRegistry`, so the caller can start a chat session there.
+Switches the panel's document workspace to `path`, which may be **any absolute
+local directory** the Host can reach (created when `create` is true, which the
+folder picker uses for a new folder). It also **finds or creates the Harness
+workspace** for that directory through the Host's `workspaceRegistry`, so the
+caller can start a chat session there.
 
 ```json
 {
   "ok": true,
-  "path": "C:\\Users\\me\\Documents\\Reports",
+  "path": "D:\\Docs\\Reports",
   "created": true,
   "dshWorkspaceId": "…"
 }
 ```
+
+Workspace rules:
+
+- Relative paths fail with `INVALID_PATH`; a file fails with
+  `NOT_A_DIRECTORY`; a missing folder without `create` fails with
+  `DIRECTORY_NOT_FOUND`.
+- A filesystem root (`C:\`, `/`) is refused with `INVALID_PATH`: a workspace
+  keeps its own `documents/` and `audit.log` entries, so a root is a typo
+  rather than a destination.
+- In read-only mode (`DSH_DOC_READ_ONLY=1`) `create:true` still fails with
+  `READ_ONLY_MODE`; switching to an existing folder is not a mutation and
+  stays allowed.
+- The reported `path` is the canonical (realpath) directory, so the Client can
+  compare it with what `/browse` returns.
 
 `dshWorkspaceId` is omitted when the profile has no workspace registry; the
 Client then only switches the document workspace and says so. Switching keeps
@@ -87,24 +134,35 @@ new opens and saves to the new one.
 
 ### `POST /open-path { "path": "<absolute file path>" }`
 
-Opens a document that the folder browser selected, without uploading it.
+Opens a document that the folder browser selected, without uploading it. The
+file may live in **any absolute local directory** the Host can read; it is
+parsed through the engine, which records the audit entry.
 
 ```json
 {
   "ok": true,
   "documentId": "doc-…",
-  "path": "…\\Q3 report.docx",
-  "directory": "…\\Reports",
+  "path": "D:\\Docs\\Reports\\Q3 report.docx",
+  "directory": "D:\\Docs\\Reports",
   "title": "Q3 report",
   "warnings": []
 }
 ```
+
+Opening rules: a relative path fails with `INVALID_PATH`; a missing file with
+`FILE_NOT_FOUND`; a directory with `NOT_A_FILE`; and any extension this build
+cannot import with `FORMAT_UNSUPPORTED`. `directory` is the canonical folder,
+which the Client passes to `POST /workspace`.
 
 `POST /open` (multipart upload) returns the same `directory` field so the Client
 can switch there too. The Client then calls `POST /workspace` and, when
 `dshWorkspaceId` comes back, starts a new chat session in that workspace through
 the Client's workspace service (`uiWorkspace.startSession`), switching to the
 conversation only when the user asks (the panel shows a "Chat ready" chip).
+
+Mutating routes stay confined: `POST /save`, `POST /saveAs` and `POST /delete`
+write inside the active document workspace only, and read-only mode still
+refuses them.
 
 ## Reads
 
