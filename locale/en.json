@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Documents",
+    "description": "Reads, creates, edits, converts and exports documents from the Harness: DOCX, legacy DOC, Apple Pages, ODT, RTF, HTML, Markdown, plain text and PDF export. Open the Documents icon in the left sidebar to browse open documents, inspect word/page counts and the outline, download DOCX, export PDF or HTML, and delete documents. In Chat, the agent can call document_create, document_open, document_get_content, document_get_text, document_search, document_insert_text, document_replace_text, document_format_text, document_apply_style, document_insert_table, document_ai_review, document_ai_summarize, document_convert, document_export_pdf and document_save. Files are read only from the configured workspace plus the session working directory, every write stays inside the workspace, document text is treated as untrusted data, and macros are never executed. AI review and summarisation work offline; rewriting, translation and generation need a configured model provider. The bundled engine is the same one the standalone editor and MCP server use, and PDF import, Google Docs API access and macro execution are not supported.",
+    "detail": "docs/DETAIL.md"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "dsh-doc-editor-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "ahmadfarizoffice-dotcom",
+  "description": "Read, create, edit, convert and export Word documents (DOCX, legacy DOC, Apple Pages, ODT, RTF, HTML, Markdown, PDF) from the Harness, with a Documents panel in the main column.",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "documents",
+    "docx",
+    "pages",
+    "pdf",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahmadfarizoffice-dotcom/dsh-doc-editor-plugin.git"
+  },
+  "homepage": "https://github.com/ahmadfarizoffice-dotcom/dsh-doc-editor-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/ahmadfarizoffice-dotcom/dsh-doc-editor-plugin/issues"
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.3"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "engine.js",
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "INSTALL.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-sidebar"]
+    }
+  }
+}

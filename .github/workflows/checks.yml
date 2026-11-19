@@ -1,0 +1,80 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - name: Validate manifest and locales
+        run: |
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs';
+            const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+            const en = JSON.parse(readFileSync('locale/en.json', 'utf8'));
+            const id = JSON.parse(readFileSync('locale/id.json', 'utf8'));
+            if (!pkg.dsh?.bundle?.patch) throw new Error('missing dsh.bundle.patch');
+            if (!pkg.exports?.['./client']) throw new Error('missing ./client export');
+            if (!pkg.exports?.['./locale/*.json']) throw new Error('missing locale export');
+            if (!pkg.exports?.['./icon']) throw new Error('missing icon export');
+            if (!en.meta?.title || !en.meta?.description) throw new Error('locale/en.json meta is incomplete');
+            if (!id.meta?.title || !id.meta?.description) throw new Error('locale/id.json meta is incomplete');
+            if (en.meta.detail !== 'docs/DETAIL.md') throw new Error('locale/en.json meta.detail must point at docs/DETAIL.md');
+            for (const file of ['engine.js', 'index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'docs/DETAIL.md', 'docs/preview.svg']) {
+              readFileSync(file);
+            }
+            console.log('manifest, locales and files OK');
+          "
+      - name: Syntax check
+        run: |
+          for file in index.js client.js engine.js; do
+            cp "$file" "/tmp/$file.mjs"
+            node --check "/tmp/$file.mjs"
+          done
+          echo "syntax OK"
+      - name: Client loader id matches the package name
+        run: |
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs';
+            const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+            const client = readFileSync('client.js', 'utf8');
+            const match = /id:\s*\"([^\"]+)\"/.exec(client);
+            if (!match) throw new Error('client.js has no module id');
+            if (match[1] !== pkg.name) throw new Error('client module id ' + match[1] + ' does not match package name ' + pkg.name);
+            const host = readFileSync('index.js', 'utf8');
+            if (!host.includes('export const inject')) throw new Error('index.js does not declare inject');
+            if (!host.includes('ctx.tools.register')) throw new Error('index.js does not register tools');
+            console.log('loader identity OK');
+          "
+      - name: Engine smoke test
+        run: |
+          node --input-type=module -e "
+            import { mkdtemp, rm } from 'node:fs/promises';
+            import { tmpdir } from 'node:os';
+            import path from 'node:path';
+            import { DocumentService, listTools, buildToolManifest } from './engine.js';
+            const workspace = await mkdtemp(path.join(tmpdir(), 'dsh-doc-'));
+            const service = new DocumentService({ workspaceRoot: workspace, allowedReadRoots: [workspace], auditPath: path.join(workspace, 'audit.log') });
+            await service.init();
+            const created = await service.createDocument({ title: 'CI', paragraphs: ['Bundled engine works.'] });
+            const text = service.getText(created.documentId).text;
+            const pdf = await service.exportPdf(created.documentId);
+            if (!text.includes('Bundled engine works.')) throw new Error('text lost');
+            if (!pdf.dataBase64) throw new Error('PDF export returned no bytes');
+            if (listTools().length < 40) throw new Error('tool registry incomplete');
+            if (buildToolManifest().tools.length !== listTools().length) throw new Error('manifest mismatch');
+            await rm(workspace, { recursive: true, force: true });
+            console.log('engine smoke OK: ' + listTools().length + ' tools, ' + pdf.pageCount + ' page(s)');
+          "

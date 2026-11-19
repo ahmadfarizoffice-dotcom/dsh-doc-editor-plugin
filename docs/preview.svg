@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" role="img" aria-label="Documents panel beside agent document tools">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f1b2a"/>
+      <stop offset="1" stop-color="#16293f"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20364e"/>
+      <stop offset="1" stop-color="#1a2a3d"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b9ae1"/>
+      <stop offset="1" stop-color="#1f5f9c"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="300" fill="url(#bg)"/>
+  <g opacity="0.5">
+    <circle cx="560" cy="40" r="120" fill="#1d3b5a"/>
+    <circle cx="40" cy="280" r="110" fill="#16324b"/>
+  </g>
+
+  <!-- window frame -->
+  <rect x="24" y="26" width="592" height="248" rx="14" fill="url(#card)" stroke="#2f4a66"/>
+  <rect x="24" y="26" width="592" height="34" rx="14" fill="#1b2f45"/>
+  <rect x="24" y="48" width="592" height="12" fill="#1b2f45"/>
+  <circle cx="44" cy="43" r="4" fill="#f26d6d"/>
+  <circle cx="58" cy="43" r="4" fill="#f2b134"/>
+  <circle cx="72" cy="43" r="4" fill="#5cc98a"/>
+
+  <!-- sidebar rail -->
+  <rect x="24" y="60" width="62" height="214" fill="#172a3d"/>
+  <rect x="40" y="78" width="30" height="26" rx="7" fill="url(#accent)"/>
+  <path d="M48 85h8l5 5v9H48z" fill="#eaf3fb"/>
+  <rect x="42" y="120" width="26" height="22" rx="6" fill="#243d55"/>
+  <rect x="42" y="150" width="26" height="22" rx="6" fill="#243d55"/>
+
+  <!-- document list -->
+  <rect x="100" y="78" width="176" height="180" rx="10" fill="#1c3146" stroke="#2b4763"/>
+  <rect x="112" y="90" width="64" height="10" rx="5" fill="#3b9ae1"/>
+  <rect x="112" y="112" width="150" height="30" rx="7" fill="#27455f"/>
+  <rect x="120" y="120" width="84" height="6" rx="3" fill="#9fc7e8"/>
+  <rect x="120" y="131" width="52" height="5" rx="2.5" fill="#5f88ab"/>
+  <g fill="#223a50">
+    <rect x="112" y="150" width="150" height="26" rx="7"/>
+    <rect x="112" y="182" width="150" height="26" rx="7"/>
+    <rect x="112" y="214" width="150" height="26" rx="7"/>
+  </g>
+  <g fill="#5f88ab">
+    <rect x="120" y="159" width="94" height="6" rx="3"/>
+    <rect x="120" y="191" width="76" height="6" rx="3"/>
+    <rect x="120" y="223" width="102" height="6" rx="3"/>
+  </g>
+
+  <!-- document preview -->
+  <rect x="294" y="78" width="300" height="180" rx="10" fill="#f7fafd"/>
+  <rect x="294" y="78" width="300" height="24" rx="10" fill="#e6eef7"/>
+  <rect x="294" y="92" width="300" height="10" fill="#e6eef7"/>
+  <rect x="308" y="86" width="70" height="8" rx="4" fill="#9db4c9"/>
+  <g fill="#c9d8e6">
+    <rect x="310" y="118" width="180" height="7" rx="3.5"/>
+    <rect x="310" y="132" width="252" height="7" rx="3.5"/>
+    <rect x="310" y="146" width="238" height="7" rx="3.5"/>
+    <rect x="310" y="160" width="196" height="7" rx="3.5"/>
+    <rect x="310" y="180" width="252" height="7" rx="3.5"/>
+    <rect x="310" y="194" width="150" height="7" rx="3.5"/>
+  </g>
+  <rect x="310" y="216" width="60" height="22" rx="6" fill="url(#accent)"/>
+  <rect x="380" y="216" width="54" height="22" rx="6" fill="#dbe7f2"/>
+  <rect x="444" y="216" width="46" height="22" rx="6" fill="#dbe7f2"/>
+
+  <!-- agent tool pills -->
+  <g transform="translate(24, 232)">
+    <rect x="0" y="0" width="52" height="26" rx="8" fill="#1f3b56"/>
+    <rect x="9" y="8" width="34" height="5" rx="2.5" fill="#6fa9d6"/>
+    <rect x="9" y="16" width="20" height="4" rx="2" fill="#3f6485"/>
+  </g>
+
+  <!-- export badge -->
+  <g transform="translate(548, 246)">
+    <circle cx="24" cy="24" r="24" fill="#f2b134"/>
+    <path d="M24 14v14" stroke="#1b1b1b" stroke-width="4" stroke-linecap="round"/>
+    <path d="M17 23l7 7 7-7" fill="none" stroke="#1b1b1b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14 34h20" stroke="#1b1b1b" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

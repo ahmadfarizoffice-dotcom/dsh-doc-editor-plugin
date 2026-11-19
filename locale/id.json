@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Dokumen",
+    "description": "Membaca, membuat, menyunting, mengonversi, dan mengekspor dokumen dari Harness: DOCX, DOC lama, Apple Pages, ODT, RTF, HTML, Markdown, teks biasa, dan ekspor PDF. Buka ikon Documents di bilah sisi kiri untuk melihat dokumen yang terbuka, jumlah kata/halaman dan kerangka, mengunduh DOCX, mengekspor PDF atau HTML, serta menghapus dokumen. Di Chat, agen dapat memanggil document_create, document_open, document_get_content, document_get_text, document_search, document_insert_text, document_replace_text, document_format_text, document_apply_style, document_insert_table, document_ai_review, document_ai_summarize, document_convert, document_export_pdf, dan document_save. Berkas hanya dibaca dari ruang kerja yang dikonfigurasi ditambah direktori kerja sesi, setiap penulisan tetap di dalam ruang kerja, teks dokumen diperlakukan sebagai data tidak tepercaya, dan makro tidak pernah dijalankan. Tinjauan dan ringkasan AI bekerja tanpa model; penulisan ulang, penerjemahan, dan pembuatan konten memerlukan penyedia model. Mesin yang dibundel sama dengan yang dipakai editor mandiri dan server MCP; impor PDF, akses Google Docs API, dan eksekusi makro tidak didukung.",
+    "detail": "docs/DETAIL.md"
+  }
+}

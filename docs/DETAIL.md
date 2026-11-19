@@ -1,0 +1,1 @@
+![The Documents panel in the main column: a document list on the left, word and page counts, the outline and text preview, and DOCX/PDF/HTML export controls, beside the agent tools that edit the same documents.](preview.svg)

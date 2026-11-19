@@ -1,0 +1,12 @@
+# One Host row owns the document engine, the tools and the panel's local API.
+# `config` carries defaults only; change them here or from the profile patch.
+- insert:
+    - id: dsh-documents
+      name: dsh-doc-editor-plugin
+      config:
+        # Empty keeps $DSH_DOC_WORKSPACE, then ~/.dsh-documents.
+        workspaceDir: ''
+        # Refuse every mutation when true (tools and the page both honour it).
+        readOnly: false
+        # Empty keeps the built-in tool subset; list exact document_* names to narrow it.
+        tools: []
