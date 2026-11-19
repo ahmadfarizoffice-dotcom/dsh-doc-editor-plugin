@@ -1170,647 +1170,687 @@ export function apply(ctx, config = {}) {
     );
   }
 
-  const webServer = ctx.get("webServer");
-  if (!webServer) return;
+  /**
+   * The Web carrier may not be listening when this plugin activates during a
+   * Harness boot, so route registration waits for the service instead of
+   * returning early (an early return left every editor route at 404 until the
+   * next hot reload).
+   */
+  const attachRoutes = (routeCtx, webServer) => {
+    routeCtx.effect(() => {
+      const disposers = [];
 
-  ctx.effect(() => {
-    const disposers = [];
-
-    disposers.push(
-      webServer.register({
-        kind: "prefix",
-        path: API_PREFIX,
-        async handler(req, res) {
-          try {
-            if (!originAllowed(req, webServer.getOrigin())) {
-              req.resume?.();
-              json(res, 403, {
-                ok: false,
-                error: {
-                  code: "ORIGIN_REFUSED",
-                  message: "Cross-origin request refused.",
-                },
-              });
-              return;
-            }
-            if (req.headers[REQUEST_HEADER] !== "1") {
-              req.resume?.();
-              json(res, 403, {
-                ok: false,
-                error: {
-                  code: "HEADER_REQUIRED",
-                  message: "Missing the Documents page request header.",
-                },
-              });
-              return;
-            }
-
-            const method = (req.method ?? "GET").toUpperCase();
-            const url = new URL(req.url ?? "/", "http://localhost");
-            const route = url.pathname.slice(API_PREFIX.length) || "/";
-
-            // Read-only mode never reaches the service for a mutating route.
-            if (method === "POST" && readOnly && MUTATING_ROUTES.has(route)) {
-              req.resume?.();
-              json(res, 200, {
-                ok: false,
-                error: {
-                  code: "READ_ONLY_MODE",
-                  message:
-                    "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
-                },
-              });
-              return;
-            }
-
-            await ready;
-            // Snapshot the active workspace/service so one request always talks
-            // to the same engine even if another request switches workspaces.
-            const activeRoot = workspaceDir;
-            const svc = service;
-
-            let body;
-            let upload;
-            if (method === "POST") {
-              const boundary = multipartBoundary(req);
-              if (boundary && route === "/open") {
-                // Raw upload: the Host saves the copy inside the workspace.
-                upload = firstFilePart(
-                  await readBodyBuffer(req, LARGE_BODY_LIMIT),
-                  boundary,
-                );
-                if (!upload) {
-                  throw new HttpError(
-                    "INVALID_ARGUMENT",
-                    "The upload had no file part.",
-                  );
-                }
-                body = {};
-              } else {
-                body = await readJsonBody(
-                  req,
-                  LARGE_BODY_ROUTES.has(route) ? LARGE_BODY_LIMIT : BODY_LIMIT,
-                );
-              }
-            }
-
-            if (method === "GET" && route === "/browse") {
-              const roots = browseRoots(activeRoot);
-              const requested = url.searchParams.get("path");
-              if (requested === null || requested.trim() === "") {
-                json(res, 200, { ok: true, roots });
-                return;
-              }
-              const target = await requireBrowsablePath(activeRoot, requested, {
-                allowDriveRoot: true,
-              });
-              const info = await stat(target).catch(() => undefined);
-              if (!info) {
-                throw new HttpError("FILE_NOT_FOUND", "Folder not found.");
-              }
-              if (!info.isDirectory()) {
-                throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
-              }
-              const importable = await importableExtensions(svc);
-              const listing = await browseDirectory(
-                activeRoot,
-                target,
-                importable,
-              );
-              json(res, 200, {
-                ok: true,
-                path: target,
-                parent: await browseParent(activeRoot, target),
-                roots,
-                entries: listing.entries,
-                truncated: listing.truncated,
-                skipped: listing.skipped,
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/workspace") {
-              json(res, 200, {
-                ok: true,
-                path: activeRoot,
-                readOnly,
-                documents: listDocuments(),
-              });
-              return;
-            }
-
-            if (method === "POST" && route === "/workspace") {
-              const create = body.create === true;
-              // Creating a folder is a filesystem write, so read-only refuses
-              // it. Switching to an existing folder is not a mutation.
-              if (create && readOnly) {
-                throw new HttpError(
-                  "READ_ONLY_MODE",
-                  "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
-                );
-              }
-              const target = await requireBrowsablePath(activeRoot, body.path);
-              const info = await stat(target).catch(() => undefined);
-              if (info && !info.isDirectory()) {
-                throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
-              }
-              let created = false;
-              if (!info) {
-                if (!create) {
-                  throw new HttpError(
-                    "DIRECTORY_NOT_FOUND",
-                    "Folder not found; pass create:true to make it.",
-                  );
-                }
-                await mkdir(target, { recursive: true });
-                created = true;
-              }
-
-              if (!samePath(target, workspaceDir)) {
-                // Build and initialize the replacement before switching so a
-                // failed init cannot leave the panel without a service.
-                const next = new DocumentService(engineOptions(target));
-                await next.init();
-                retired.push(service);
-                service = next;
-                workspaceDir = target;
-                ready = Promise.resolve(next);
-              }
-
-              let dshWorkspaceId;
-              let warning;
-              const registry = ctx.get("workspaceRegistry");
-              if (
-                registry &&
-                (typeof registry.resolveByPath === "function" ||
-                  typeof registry.create === "function")
-              ) {
-                try {
-                  let workspace =
-                    typeof registry.resolveByPath === "function"
-                      ? await registry.resolveByPath(target)
-                      : undefined;
-                  if (!workspace && typeof registry.create === "function") {
-                    workspace = await registry.create(
-                      target,
-                      path.basename(target) || target,
-                    );
-                  }
-                  if (workspace && typeof workspace.id === "string") {
-                    dshWorkspaceId = workspace.id;
-                  }
-                } catch {
-                  warning = "workspace-registry-failed";
-                }
-              } else {
-                warning = "workspace-registry-unavailable";
-              }
-
-              json(res, 200, {
-                ok: true,
-                path: target,
-                created,
-                ...(dshWorkspaceId ? { dshWorkspaceId } : {}),
-                ...(warning ? { warning } : {}),
-              });
-              return;
-            }
-
-            if (method === "POST" && route === "/open-path") {
-              const target = await requireBrowsablePath(activeRoot, body.path);
-              const info = await stat(target).catch(() => undefined);
-              if (!info) {
-                throw new HttpError("FILE_NOT_FOUND", "File not found.");
-              }
-              if (!info.isFile()) {
-                throw new HttpError("NOT_A_FILE", "Not a file.");
-              }
-              const importable = await importableExtensions(svc);
-              if (!importable.has(extensionOf(target))) {
-                throw new HttpError(
-                  "FORMAT_UNSUPPORTED",
-                  "That file format cannot be imported by this build.",
-                );
-              }
-              // Re-opening a file that is already open reuses its session, so the
-              // document list never shows the same file twice.
-              const alreadyOpen = svc
-                .sessions_()
-                .find(
-                  (session) =>
-                    session.filePath !== undefined &&
-                    path.resolve(session.filePath) === target,
-                );
-              if (alreadyOpen) {
-                json(res, 200, {
-                  ok: true,
-                  documentId: alreadyOpen.id,
-                  path: target,
-                  directory: path.dirname(target),
-                  title:
-                    alreadyOpen.document.metadata.title ??
-                    path.basename(target).replace(/\.[^.]+$/, ""),
-                  warnings: [],
-                  reused: true,
+      disposers.push(
+        webServer.register({
+          kind: "prefix",
+          path: API_PREFIX,
+          async handler(req, res) {
+            try {
+              if (!originAllowed(req, webServer.getOrigin())) {
+                req.resume?.();
+                json(res, 403, {
+                  ok: false,
+                  error: {
+                    code: "ORIGIN_REFUSED",
+                    message: "Cross-origin request refused.",
+                  },
                 });
                 return;
               }
-              const opened = await svc.openDocument(target);
-              const fallbackTitle = path
-                .basename(target)
-                .replace(/\.[^.]+$/, "");
-              if (!opened.document?.metadata?.title) {
-                // Give imported files their file name as the document title.
-                try {
-                  svc.setDocumentMetadata(opened.documentId, {
-                    title: fallbackTitle,
-                  });
-                } catch {
-                  // The title is cosmetic; never fail the open for it.
-                }
-              }
-              json(res, 200, {
-                ok: true,
-                documentId: opened.documentId,
-                path: target,
-                directory: path.dirname(target),
-                title:
-                  svc.session(opened.documentId).document.metadata.title ??
-                  fallbackTitle,
-                warnings: opened.warnings ?? [],
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/list") {
-              json(res, 200, {
-                ok: true,
-                workspace: activeRoot,
-                readOnly,
-                documents: listDocuments(),
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/bootstrap") {
-              const documentId = safeId(url.searchParams.get("id"));
-              const owner = serviceFor(documentId);
-              const session = owner.session(documentId);
-              const layout = owner.layout(session);
-              const meta = owner.metadata(documentId);
-              let formats = { import: [], export: [] };
-              try {
-                const listed = await owner.listFormats();
-                formats = {
-                  import: Array.isArray(listed?.import) ? listed.import : [],
-                  export: Array.isArray(listed?.export) ? listed.export : [],
-                };
-              } catch {
-                // The model still edits fine without the adapter registry.
-              }
-              json(res, 200, {
-                ok: true,
-                workspace: activeRoot,
-                readOnly,
-                formats,
-                documentId,
-                title: session.document.metadata.title ?? "Untitled document",
-                dirty: session.dirty,
-                revision: session.revision,
-                sourceFormat: session.sourceFormat ?? "docx",
-                document: session.document,
-                blockPages: blockPages(session.document, layout),
-                pageCount: layout.pageCount,
-                stats: meta.stats,
-                outline: owner.getOutline(documentId),
-                capabilities: capabilities(),
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/search") {
-              const documentId = safeId(url.searchParams.get("id"));
-              const query = url.searchParams.get("q") ?? "";
-              if (!query) {
-                throw new HttpError(
-                  "INVALID_ARGUMENT",
-                  "The q search parameter is required.",
-                );
-              }
-              const found = serviceFor(documentId).search(documentId, query, {
-                regex: queryFlag(url.searchParams, "regex"),
-                caseSensitive: queryFlag(url.searchParams, "caseSensitive"),
-                includePages: true,
-              });
-              json(res, 200, {
-                ok: true,
-                matches: found.matches,
-                total: found.total,
-              });
-              return;
-            }
-
-            if (method === "POST" && route === "/op") {
-              const documentId = safeId(body.id);
-              const owner = serviceFor(documentId);
-              try {
-                const name = requireOperation(body.op);
-                const result = await applyOperation(
-                  owner,
-                  documentId,
-                  name,
-                  body.args,
-                  owner.workspace.root,
-                );
-                if (HISTORY_OPS.has(name)) {
-                  json(res, 200, {
-                    ok: true,
-                    ...documentSnapshot(owner, documentId),
-                    document: owner.session(documentId).document,
-                  });
-                  return;
-                }
-                json(res, 200, {
-                  ok: true,
-                  ...documentSnapshot(owner, documentId),
-                  result: result ?? null,
+              if (req.headers[REQUEST_HEADER] !== "1") {
+                req.resume?.();
+                json(res, 403, {
+                  ok: false,
+                  error: {
+                    code: "HEADER_REQUIRED",
+                    message: "Missing the Documents page request header.",
+                  },
                 });
-              } catch (error) {
+                return;
+              }
+
+              const method = (req.method ?? "GET").toUpperCase();
+              const url = new URL(req.url ?? "/", "http://localhost");
+              const route = url.pathname.slice(API_PREFIX.length) || "/";
+
+              // Read-only mode never reaches the service for a mutating route.
+              if (method === "POST" && readOnly && MUTATING_ROUTES.has(route)) {
+                req.resume?.();
                 json(res, 200, {
                   ok: false,
-                  applied: 0,
-                  error: errorPayload(error),
+                  error: {
+                    code: "READ_ONLY_MODE",
+                    message:
+                      "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
+                  },
                 });
+                return;
               }
-              return;
-            }
 
-            if (method === "POST" && route === "/ops") {
-              const documentId = safeId(body.id);
-              const owner = serviceFor(documentId);
-              if (!Array.isArray(body.ops) || body.ops.length === 0) {
-                throw new HttpError(
-                  "INVALID_ARGUMENT",
-                  "ops must be a non-empty array.",
-                );
-              }
-              let applied = 0;
-              let result;
-              let history = false;
-              for (const entry of body.ops) {
-                try {
-                  if (!asObject(entry)) {
+              await ready;
+              // Snapshot the active workspace/service so one request always talks
+              // to the same engine even if another request switches workspaces.
+              const activeRoot = workspaceDir;
+              const svc = service;
+
+              let body;
+              let upload;
+              if (method === "POST") {
+                const boundary = multipartBoundary(req);
+                if (boundary && route === "/open") {
+                  // Raw upload: the Host saves the copy inside the workspace.
+                  upload = firstFilePart(
+                    await readBodyBuffer(req, LARGE_BODY_LIMIT),
+                    boundary,
+                  );
+                  if (!upload) {
                     throw new HttpError(
                       "INVALID_ARGUMENT",
-                      "Each ops entry must be an object.",
+                      "The upload had no file part.",
                     );
                   }
-                  const name = requireOperation(entry.op);
-                  result = await applyOperation(
-                    owner,
-                    documentId,
-                    name,
-                    entry.args,
-                    owner.workspace.root,
+                  body = {};
+                } else {
+                  body = await readJsonBody(
+                    req,
+                    LARGE_BODY_ROUTES.has(route)
+                      ? LARGE_BODY_LIMIT
+                      : BODY_LIMIT,
                   );
-                  if (HISTORY_OPS.has(name)) history = true;
-                  applied += 1;
-                } catch (error) {
-                  json(res, 200, {
-                    ok: false,
-                    applied,
-                    error: errorPayload(error),
-                  });
-                  return;
                 }
               }
-              json(res, 200, {
-                ok: true,
-                applied,
-                ...documentSnapshot(owner, documentId),
-                result: result ?? null,
-                ...(history
-                  ? { document: owner.session(documentId).document }
-                  : {}),
-              });
-              return;
-            }
 
-            if (method === "POST" && route === "/save") {
-              const documentId = safeId(body.id);
-              const owner = serviceFor(documentId);
-              const target = workspacePath(owner.workspace.root, body.path);
-              const saved = await owner.saveDocument(documentId, target);
-              json(res, 200, {
-                ok: true,
-                path: saved.path,
-                bytes: saved.bytes,
-                revision: owner.session(documentId).revision,
-              });
-              return;
-            }
-
-            if (method === "POST" && route === "/saveAs") {
-              const documentId = safeId(body.id);
-              const owner = serviceFor(documentId);
-              const target = workspacePath(owner.workspace.root, body.path);
-              if (!target) {
-                throw new HttpError(
-                  "PATH_REQUIRED",
-                  "Give a path for the saved copy.",
+              if (method === "GET" && route === "/browse") {
+                const roots = browseRoots(activeRoot);
+                const requested = url.searchParams.get("path");
+                if (requested === null || requested.trim() === "") {
+                  json(res, 200, { ok: true, roots });
+                  return;
+                }
+                const target = await requireBrowsablePath(
+                  activeRoot,
+                  requested,
+                  {
+                    allowDriveRoot: true,
+                  },
                 );
+                const info = await stat(target).catch(() => undefined);
+                if (!info) {
+                  throw new HttpError("FILE_NOT_FOUND", "Folder not found.");
+                }
+                if (!info.isDirectory()) {
+                  throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+                }
+                const importable = await importableExtensions(svc);
+                const listing = await browseDirectory(
+                  activeRoot,
+                  target,
+                  importable,
+                );
+                json(res, 200, {
+                  ok: true,
+                  path: target,
+                  parent: await browseParent(activeRoot, target),
+                  roots,
+                  entries: listing.entries,
+                  truncated: listing.truncated,
+                  skipped: listing.skipped,
+                });
+                return;
               }
-              const saved = await owner.saveDocumentAs(documentId, target);
-              json(res, 200, {
-                ok: true,
-                path: saved.path,
-                bytes: saved.bytes,
-                revision: owner.session(documentId).revision,
-              });
-              return;
-            }
 
-            if (method === "POST" && route === "/create") {
-              const created = await svc.createDocument({
-                title:
-                  typeof body.title === "string" && body.title.trim()
-                    ? body.title.trim()
-                    : "Untitled document",
-                paragraphs:
-                  typeof body.text === "string" && body.text.trim()
-                    ? [body.text.trim()]
-                    : undefined,
-              });
-              json(res, 200, { ok: true, documentId: created.documentId });
-              return;
-            }
+              if (method === "GET" && route === "/workspace") {
+                json(res, 200, {
+                  ok: true,
+                  path: activeRoot,
+                  readOnly,
+                  documents: listDocuments(),
+                });
+                return;
+              }
 
-            if (method === "POST" && route === "/open") {
-              // Two shapes: an uploaded file (multipart, saved into the
-              // workspace) and the original `{ path }` JSON form.
-              let sourcePath;
-              if (upload) {
-                if (readOnly) {
+              if (method === "POST" && route === "/workspace") {
+                const create = body.create === true;
+                // Creating a folder is a filesystem write, so read-only refuses
+                // it. Switching to an existing folder is not a mutation.
+                if (create && readOnly) {
                   throw new HttpError(
                     "READ_ONLY_MODE",
                     "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
                   );
                 }
-                const name = safeUploadName(upload.filename);
-                if (!(await importableExtensions(svc)).has(extensionOf(name))) {
+                const target = await requireBrowsablePath(
+                  activeRoot,
+                  body.path,
+                );
+                const info = await stat(target).catch(() => undefined);
+                if (info && !info.isDirectory()) {
+                  throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+                }
+                let created = false;
+                if (!info) {
+                  if (!create) {
+                    throw new HttpError(
+                      "DIRECTORY_NOT_FOUND",
+                      "Folder not found; pass create:true to make it.",
+                    );
+                  }
+                  await mkdir(target, { recursive: true });
+                  created = true;
+                }
+
+                if (!samePath(target, workspaceDir)) {
+                  // Build and initialize the replacement before switching so a
+                  // failed init cannot leave the panel without a service.
+                  const next = new DocumentService(engineOptions(target));
+                  await next.init();
+                  retired.push(service);
+                  service = next;
+                  workspaceDir = target;
+                  ready = Promise.resolve(next);
+                }
+
+                let dshWorkspaceId;
+                let warning;
+                const registry = ctx.get("workspaceRegistry");
+                if (
+                  registry &&
+                  (typeof registry.resolveByPath === "function" ||
+                    typeof registry.create === "function")
+                ) {
+                  try {
+                    let workspace =
+                      typeof registry.resolveByPath === "function"
+                        ? await registry.resolveByPath(target)
+                        : undefined;
+                    if (!workspace && typeof registry.create === "function") {
+                      workspace = await registry.create(
+                        target,
+                        path.basename(target) || target,
+                      );
+                    }
+                    if (workspace && typeof workspace.id === "string") {
+                      dshWorkspaceId = workspace.id;
+                    }
+                  } catch {
+                    warning = "workspace-registry-failed";
+                  }
+                } else {
+                  warning = "workspace-registry-unavailable";
+                }
+
+                json(res, 200, {
+                  ok: true,
+                  path: target,
+                  created,
+                  ...(dshWorkspaceId ? { dshWorkspaceId } : {}),
+                  ...(warning ? { warning } : {}),
+                });
+                return;
+              }
+
+              if (method === "POST" && route === "/open-path") {
+                const target = await requireBrowsablePath(
+                  activeRoot,
+                  body.path,
+                );
+                const info = await stat(target).catch(() => undefined);
+                if (!info) {
+                  throw new HttpError("FILE_NOT_FOUND", "File not found.");
+                }
+                if (!info.isFile()) {
+                  throw new HttpError("NOT_A_FILE", "Not a file.");
+                }
+                const importable = await importableExtensions(svc);
+                if (!importable.has(extensionOf(target))) {
                   throw new HttpError(
                     "FORMAT_UNSUPPORTED",
                     "That file format cannot be imported by this build.",
                   );
                 }
-                const directory = path.join(activeRoot, "imports");
-                await mkdir(directory, { recursive: true });
-                sourcePath = path.join(
-                  directory,
-                  `${Date.now().toString(36)}-${name}`,
-                );
-                await writeFile(sourcePath, upload.data);
-              } else {
-                if (typeof body.path !== "string" || !body.path.trim()) {
-                  throw new HttpError(
-                    "PATH_REQUIRED",
-                    "Give a path to a document inside the workspace.",
+                // Re-opening a file that is already open reuses its session, so the
+                // document list never shows the same file twice.
+                const alreadyOpen = svc
+                  .sessions_()
+                  .find(
+                    (session) =>
+                      session.filePath !== undefined &&
+                      path.resolve(session.filePath) === target,
                   );
+                if (alreadyOpen) {
+                  json(res, 200, {
+                    ok: true,
+                    documentId: alreadyOpen.id,
+                    path: target,
+                    directory: path.dirname(target),
+                    title:
+                      alreadyOpen.document.metadata.title ??
+                      path.basename(target).replace(/\.[^.]+$/, ""),
+                    warnings: [],
+                    reused: true,
+                  });
+                  return;
                 }
-                sourcePath = workspacePath(activeRoot, body.path);
-              }
-              const opened = await svc.openDocument(sourcePath);
-              json(res, 200, {
-                ok: true,
-                documentId: opened.documentId,
-                path: path.resolve(sourcePath),
-                directory: path.dirname(path.resolve(sourcePath)),
-                title:
-                  svc.session(opened.documentId).document.metadata.title ??
-                  path.basename(sourcePath).replace(/\.[^.]+$/, ""),
-                warnings: opened.warnings ?? [],
-                report: opened.report,
-                compatibility: opened.compatibility,
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/document") {
-              const documentId = safeId(url.searchParams.get("id"));
-              const owner = serviceFor(documentId);
-              const session = owner.session(documentId);
-              const metadata = owner.metadata(documentId);
-              const outline = owner.getOutline(documentId);
-              const text = owner.getText(documentId).text;
-              json(res, 200, {
-                ok: true,
-                metadata,
-                outline,
-                text:
-                  text.length > 6000
-                    ? `${text.slice(0, 6000)}\n\n[Text truncated by the Documents panel]`
-                    : text,
-                truncated: text.length > 6000,
-                layout: owner.getPageInfo(documentId),
-                sourceFormat: session.sourceFormat ?? "docx",
-              });
-              return;
-            }
-
-            if (method === "GET" && route === "/export") {
-              const documentId = safeId(url.searchParams.get("id"));
-              const format = String(
-                url.searchParams.get("format") ?? "docx",
-              ).toLowerCase();
-              const allowed = new Set([
-                "docx",
-                "dotx",
-                "docm",
-                "pdf",
-                "html",
-                "md",
-                "txt",
-                "odt",
-                "rtf",
-              ]);
-              if (!allowed.has(format)) {
-                json(res, 400, {
-                  ok: false,
-                  error: {
-                    code: "FORMAT_UNSUPPORTED",
-                    message: `Cannot export ${format}.`,
-                  },
+                const opened = await svc.openDocument(target);
+                const fallbackTitle = path
+                  .basename(target)
+                  .replace(/\.[^.]+$/, "");
+                if (!opened.document?.metadata?.title) {
+                  // Give imported files their file name as the document title.
+                  try {
+                    svc.setDocumentMetadata(opened.documentId, {
+                      title: fallbackTitle,
+                    });
+                  } catch {
+                    // The title is cosmetic; never fail the open for it.
+                  }
+                }
+                json(res, 200, {
+                  ok: true,
+                  documentId: opened.documentId,
+                  path: target,
+                  directory: path.dirname(target),
+                  title:
+                    svc.session(opened.documentId).document.metadata.title ??
+                    fallbackTitle,
+                  warnings: opened.warnings ?? [],
                 });
                 return;
               }
-              const owner = serviceFor(documentId);
-              const exported =
-                format === "pdf"
-                  ? await owner.exportPdf(documentId)
-                  : await owner.exportDocument(documentId, format);
-              const bytes = Buffer.from(exported.dataBase64 ?? "", "base64");
-              const types = {
-                docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
-                docm: "application/vnd.ms-word.document.macroEnabled.12",
-                pdf: "application/pdf",
-                html: "text/html; charset=utf-8",
-                md: "text/markdown; charset=utf-8",
-                txt: "text/plain; charset=utf-8",
-                odt: "application/vnd.oasis.opendocument.text",
-                rtf: "application/rtf",
-              };
-              const title = (
-                owner.metadata(documentId).metadata?.title ?? documentId
-              )
-                .replace(/[^\w .-]+/g, "_")
-                .slice(0, 80);
-              res.writeHead(200, {
-                "content-type": types[format] ?? "application/octet-stream",
-                "content-length": String(bytes.length),
-                "content-disposition": `attachment; filename="${title || "document"}.${format}"`,
-                "cache-control": "no-store",
+
+              if (method === "GET" && route === "/list") {
+                json(res, 200, {
+                  ok: true,
+                  workspace: activeRoot,
+                  readOnly,
+                  documents: listDocuments(),
+                });
+                return;
+              }
+
+              if (method === "GET" && route === "/bootstrap") {
+                const documentId = safeId(url.searchParams.get("id"));
+                const owner = serviceFor(documentId);
+                const session = owner.session(documentId);
+                const layout = owner.layout(session);
+                const meta = owner.metadata(documentId);
+                let formats = { import: [], export: [] };
+                try {
+                  const listed = await owner.listFormats();
+                  formats = {
+                    import: Array.isArray(listed?.import) ? listed.import : [],
+                    export: Array.isArray(listed?.export) ? listed.export : [],
+                  };
+                } catch {
+                  // The model still edits fine without the adapter registry.
+                }
+                json(res, 200, {
+                  ok: true,
+                  workspace: activeRoot,
+                  readOnly,
+                  formats,
+                  documentId,
+                  title: session.document.metadata.title ?? "Untitled document",
+                  dirty: session.dirty,
+                  revision: session.revision,
+                  sourceFormat: session.sourceFormat ?? "docx",
+                  document: session.document,
+                  blockPages: blockPages(session.document, layout),
+                  pageCount: layout.pageCount,
+                  stats: meta.stats,
+                  outline: owner.getOutline(documentId),
+                  capabilities: capabilities(),
+                });
+                return;
+              }
+
+              if (method === "GET" && route === "/search") {
+                const documentId = safeId(url.searchParams.get("id"));
+                const query = url.searchParams.get("q") ?? "";
+                if (!query) {
+                  throw new HttpError(
+                    "INVALID_ARGUMENT",
+                    "The q search parameter is required.",
+                  );
+                }
+                const found = serviceFor(documentId).search(documentId, query, {
+                  regex: queryFlag(url.searchParams, "regex"),
+                  caseSensitive: queryFlag(url.searchParams, "caseSensitive"),
+                  includePages: true,
+                });
+                json(res, 200, {
+                  ok: true,
+                  matches: found.matches,
+                  total: found.total,
+                });
+                return;
+              }
+
+              if (method === "POST" && route === "/op") {
+                const documentId = safeId(body.id);
+                const owner = serviceFor(documentId);
+                try {
+                  const name = requireOperation(body.op);
+                  const result = await applyOperation(
+                    owner,
+                    documentId,
+                    name,
+                    body.args,
+                    owner.workspace.root,
+                  );
+                  if (HISTORY_OPS.has(name)) {
+                    json(res, 200, {
+                      ok: true,
+                      ...documentSnapshot(owner, documentId),
+                      document: owner.session(documentId).document,
+                    });
+                    return;
+                  }
+                  json(res, 200, {
+                    ok: true,
+                    ...documentSnapshot(owner, documentId),
+                    result: result ?? null,
+                  });
+                } catch (error) {
+                  json(res, 200, {
+                    ok: false,
+                    applied: 0,
+                    error: errorPayload(error),
+                  });
+                }
+                return;
+              }
+
+              if (method === "POST" && route === "/ops") {
+                const documentId = safeId(body.id);
+                const owner = serviceFor(documentId);
+                if (!Array.isArray(body.ops) || body.ops.length === 0) {
+                  throw new HttpError(
+                    "INVALID_ARGUMENT",
+                    "ops must be a non-empty array.",
+                  );
+                }
+                let applied = 0;
+                let result;
+                let history = false;
+                for (const entry of body.ops) {
+                  try {
+                    if (!asObject(entry)) {
+                      throw new HttpError(
+                        "INVALID_ARGUMENT",
+                        "Each ops entry must be an object.",
+                      );
+                    }
+                    const name = requireOperation(entry.op);
+                    result = await applyOperation(
+                      owner,
+                      documentId,
+                      name,
+                      entry.args,
+                      owner.workspace.root,
+                    );
+                    if (HISTORY_OPS.has(name)) history = true;
+                    applied += 1;
+                  } catch (error) {
+                    json(res, 200, {
+                      ok: false,
+                      applied,
+                      error: errorPayload(error),
+                    });
+                    return;
+                  }
+                }
+                json(res, 200, {
+                  ok: true,
+                  applied,
+                  ...documentSnapshot(owner, documentId),
+                  result: result ?? null,
+                  ...(history
+                    ? { document: owner.session(documentId).document }
+                    : {}),
+                });
+                return;
+              }
+
+              if (method === "POST" && route === "/save") {
+                const documentId = safeId(body.id);
+                const owner = serviceFor(documentId);
+                const target = workspacePath(owner.workspace.root, body.path);
+                const saved = await owner.saveDocument(documentId, target);
+                json(res, 200, {
+                  ok: true,
+                  path: saved.path,
+                  bytes: saved.bytes,
+                  revision: owner.session(documentId).revision,
+                });
+                return;
+              }
+
+              if (method === "POST" && route === "/saveAs") {
+                const documentId = safeId(body.id);
+                const owner = serviceFor(documentId);
+                const target = workspacePath(owner.workspace.root, body.path);
+                if (!target) {
+                  throw new HttpError(
+                    "PATH_REQUIRED",
+                    "Give a path for the saved copy.",
+                  );
+                }
+                const saved = await owner.saveDocumentAs(documentId, target);
+                json(res, 200, {
+                  ok: true,
+                  path: saved.path,
+                  bytes: saved.bytes,
+                  revision: owner.session(documentId).revision,
+                });
+                return;
+              }
+
+              if (method === "POST" && route === "/create") {
+                const created = await svc.createDocument({
+                  title:
+                    typeof body.title === "string" && body.title.trim()
+                      ? body.title.trim()
+                      : "Untitled document",
+                  paragraphs:
+                    typeof body.text === "string" && body.text.trim()
+                      ? [body.text.trim()]
+                      : undefined,
+                });
+                json(res, 200, { ok: true, documentId: created.documentId });
+                return;
+              }
+
+              if (method === "POST" && route === "/open") {
+                // Two shapes: an uploaded file (multipart, saved into the
+                // workspace) and the original `{ path }` JSON form.
+                let sourcePath;
+                if (upload) {
+                  if (readOnly) {
+                    throw new HttpError(
+                      "READ_ONLY_MODE",
+                      "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
+                    );
+                  }
+                  const name = safeUploadName(upload.filename);
+                  if (
+                    !(await importableExtensions(svc)).has(extensionOf(name))
+                  ) {
+                    throw new HttpError(
+                      "FORMAT_UNSUPPORTED",
+                      "That file format cannot be imported by this build.",
+                    );
+                  }
+                  const directory = path.join(activeRoot, "imports");
+                  await mkdir(directory, { recursive: true });
+                  sourcePath = path.join(
+                    directory,
+                    `${Date.now().toString(36)}-${name}`,
+                  );
+                  await writeFile(sourcePath, upload.data);
+                } else {
+                  if (typeof body.path !== "string" || !body.path.trim()) {
+                    throw new HttpError(
+                      "PATH_REQUIRED",
+                      "Give a path to a document inside the workspace.",
+                    );
+                  }
+                  sourcePath = workspacePath(activeRoot, body.path);
+                }
+                const opened = await svc.openDocument(sourcePath);
+                json(res, 200, {
+                  ok: true,
+                  documentId: opened.documentId,
+                  path: path.resolve(sourcePath),
+                  directory: path.dirname(path.resolve(sourcePath)),
+                  title:
+                    svc.session(opened.documentId).document.metadata.title ??
+                    path.basename(sourcePath).replace(/\.[^.]+$/, ""),
+                  warnings: opened.warnings ?? [],
+                  report: opened.report,
+                  compatibility: opened.compatibility,
+                });
+                return;
+              }
+
+              if (method === "GET" && route === "/document") {
+                const documentId = safeId(url.searchParams.get("id"));
+                const owner = serviceFor(documentId);
+                const session = owner.session(documentId);
+                const metadata = owner.metadata(documentId);
+                const outline = owner.getOutline(documentId);
+                const text = owner.getText(documentId).text;
+                json(res, 200, {
+                  ok: true,
+                  metadata,
+                  outline,
+                  text:
+                    text.length > 6000
+                      ? `${text.slice(0, 6000)}\n\n[Text truncated by the Documents panel]`
+                      : text,
+                  truncated: text.length > 6000,
+                  layout: owner.getPageInfo(documentId),
+                  sourceFormat: session.sourceFormat ?? "docx",
+                });
+                return;
+              }
+
+              if (method === "GET" && route === "/export") {
+                const documentId = safeId(url.searchParams.get("id"));
+                const format = String(
+                  url.searchParams.get("format") ?? "docx",
+                ).toLowerCase();
+                const allowed = new Set([
+                  "docx",
+                  "dotx",
+                  "docm",
+                  "pdf",
+                  "html",
+                  "md",
+                  "txt",
+                  "odt",
+                  "rtf",
+                ]);
+                if (!allowed.has(format)) {
+                  json(res, 400, {
+                    ok: false,
+                    error: {
+                      code: "FORMAT_UNSUPPORTED",
+                      message: `Cannot export ${format}.`,
+                    },
+                  });
+                  return;
+                }
+                const owner = serviceFor(documentId);
+                const exported =
+                  format === "pdf"
+                    ? await owner.exportPdf(documentId)
+                    : await owner.exportDocument(documentId, format);
+                const bytes = Buffer.from(exported.dataBase64 ?? "", "base64");
+                const types = {
+                  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+                  docm: "application/vnd.ms-word.document.macroEnabled.12",
+                  pdf: "application/pdf",
+                  html: "text/html; charset=utf-8",
+                  md: "text/markdown; charset=utf-8",
+                  txt: "text/plain; charset=utf-8",
+                  odt: "application/vnd.oasis.opendocument.text",
+                  rtf: "application/rtf",
+                };
+                const title = (
+                  owner.metadata(documentId).metadata?.title ?? documentId
+                )
+                  .replace(/[^\w .-]+/g, "_")
+                  .slice(0, 80);
+                res.writeHead(200, {
+                  "content-type": types[format] ?? "application/octet-stream",
+                  "content-length": String(bytes.length),
+                  "content-disposition": `attachment; filename="${title || "document"}.${format}"`,
+                  "cache-control": "no-store",
+                });
+                res.end(bytes);
+                return;
+              }
+
+              if (method === "POST" && route === "/delete") {
+                const documentId = safeId(body.id);
+                const owner = serviceFor(documentId);
+                await owner
+                  .closeDocument(documentId, { discardUnsaved: true })
+                  .catch(() => undefined);
+                await owner.deleteDocument(documentId);
+                json(res, 200, { ok: true });
+                return;
+              }
+
+              json(res, 404, {
+                ok: false,
+                error: {
+                  code: "NOT_FOUND",
+                  message: "Unknown Documents API route.",
+                },
               });
-              res.end(bytes);
-              return;
+            } catch (error) {
+              json(res, 200, {
+                ok: false,
+                error: errorPayload(error),
+              });
             }
+          },
+        }),
+      );
 
-            if (method === "POST" && route === "/delete") {
-              const documentId = safeId(body.id);
-              const owner = serviceFor(documentId);
-              await owner
-                .closeDocument(documentId, { discardUnsaved: true })
-                .catch(() => undefined);
-              await owner.deleteDocument(documentId);
-              json(res, 200, { ok: true });
-              return;
-            }
-
-            json(res, 404, {
-              ok: false,
-              error: {
-                code: "NOT_FOUND",
-                message: "Unknown Documents API route.",
-              },
-            });
-          } catch (error) {
-            json(res, 200, {
-              ok: false,
-              error: errorPayload(error),
-            });
+      return () => {
+        for (const dispose of disposers.reverse()) {
+          try {
+            dispose();
+          } catch {
+            // Disposal is best-effort during unload.
           }
-        },
-      }),
-    );
-
-    return () => {
-      for (const dispose of disposers.reverse()) {
-        try {
-          dispose();
-        } catch {
-          // Disposal is best-effort during unload.
         }
-      }
-    };
-  });
+      };
+    });
+  };
+
+  const immediateWebServer = ctx.get("webServer");
+  if (immediateWebServer) {
+    attachRoutes(ctx, immediateWebServer);
+  } else if (typeof ctx.inject === "function") {
+    ctx.inject(["webServer"], (routeCtx) => {
+      const webServer = routeCtx.get("webServer") ?? routeCtx.webServer;
+      if (webServer) attachRoutes(routeCtx, webServer);
+    });
+  } else {
+    // Last-resort readiness wait for hosts without `ctx.inject`. The timer is
+    // unref'd so a mock or headless host can still exit.
+    const timer = setInterval(() => {
+      const webServer = ctx.get("webServer");
+      if (!webServer) return;
+      clearInterval(timer);
+      attachRoutes(ctx, webServer);
+    }, 250);
+    timer.unref?.();
+    ctx.effect(() => () => clearInterval(timer));
+  }
 }

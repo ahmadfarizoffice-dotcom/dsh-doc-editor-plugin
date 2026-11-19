@@ -497,41 +497,49 @@ window.__ModuleLoader__.load({
 .dx-ribbon-file[aria-selected=true]{color:var(--dx-accent);font-weight:600;border-bottom:2px solid var(--dx-accent);}
 
 /* ------------------------------------------------------------ ribbon */
-/* Icon-only ribbon: 28 px targets, wrapped rows per group, captions kept. */
+/* Constant-height ribbon: exactly 1/16 of the viewport on every tab.
+   Groups stay on one row and the whole ribbon scrolls horizontally instead
+   of growing taller, so switching tabs never shifts the document. */
 .dx-ribbon{
-  display:flex;align-items:stretch;gap:0;flex:0 0 auto;min-height:70px;padding:2px 6px 0;
+  display:flex;align-items:stretch;gap:0;flex:0 0 auto;
+  height:calc(100vh / 16);min-height:36px;max-height:120px;padding:0 6px;
   overflow-x:auto;overflow-y:hidden;background:var(--dx-surface);border-bottom:1px solid var(--dx-border);
 }
 .dx-ribbon[hidden]{display:none;}
 .dx-group{
-  display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;
-  min-height:66px;padding:2px 6px 1px;border-right:1px solid var(--dx-border);
+  display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;
+  height:100%;min-height:0;padding:1px 6px 0;border-right:1px solid var(--dx-border);flex:0 0 auto;
 }
 .dx-group:last-child{border-right:0;}
-.dx-group-items{display:flex;align-items:flex-start;gap:2px;max-width:340px;flex-wrap:wrap;align-content:flex-start;}
-.dx-group-items.dx-column{flex-direction:column;flex-wrap:nowrap;max-height:62px;}
+.dx-group-items{
+  display:flex;align-items:center;gap:2px;flex:1 1 auto;min-height:0;max-width:none;
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+}
+.dx-group-items.dx-column{flex-direction:row;flex-wrap:nowrap;max-height:none;}
 .dx-group-label{
-  margin-top:1px;text-align:center;color:var(--dx-muted);font-size:10px;line-height:1.2;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;
+  margin:0;text-align:center;color:var(--dx-muted);font-size:9px;line-height:1.1;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;
 }
 .dx-tool{
   display:inline-flex;align-items:center;justify-content:center;gap:2px;
-  width:28px;height:28px;min-width:28px;padding:2px;border:1px solid transparent;border-radius:var(--dx-radius);
-  background:transparent;color:var(--dx-text);cursor:pointer;font-size:10.5px;line-height:1.1;
+  width:24px;height:24px;min-width:24px;padding:1px;border:1px solid transparent;border-radius:var(--dx-radius);
+  background:transparent;color:var(--dx-text);cursor:pointer;font-size:10.5px;line-height:1.1;flex:0 0 auto;
 }
 .dx-tool .dx-tool-label{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dx-tool:hover:not([disabled]){background:var(--dx-hover);border-color:var(--dx-border);}
 .dx-tool[aria-pressed=true]{background:var(--dx-selected);border-color:var(--dx-accent);}
 .dx-tool[disabled]{opacity:.42;cursor:not-allowed;}
 .dx-tool:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-1px;}
-.dx-tool.dx-tool-small{height:28px;min-width:28px;font-size:10.5px;}
-.dx-tool.dx-tool-tiny{height:28px;min-width:28px;padding:2px;}
-/* View → Show labels restores the previous text labels. */
-.dx-show-labels .dx-tool{width:auto;min-width:46px;height:46px;flex-direction:column;gap:1px;padding:3px 4px;}
-.dx-show-labels .dx-tool .dx-tool-label{display:block;}
+.dx-tool.dx-tool-small{height:24px;min-width:24px;font-size:10.5px;}
+.dx-tool.dx-tool-tiny{height:24px;min-width:24px;padding:1px;}
+/* View → Show labels restores the previous text labels inside the same height. */
+.dx-show-labels .dx-tool{
+  width:auto;min-width:44px;height:calc(100% - 2px);flex-direction:column;gap:0;padding:1px 4px;
+}
+.dx-show-labels .dx-tool .dx-tool-label{display:block;font-size:9.5px;line-height:1.1;}
 .dx-show-labels .dx-tool.dx-tool-small,
-.dx-show-labels .dx-tool.dx-tool-tiny{height:26px;min-width:26px;flex-direction:row;gap:4px;font-size:12px;}
-.dx-show-labels .dx-group{min-height:66px;}
+.dx-show-labels .dx-tool.dx-tool-tiny{height:calc(100% - 2px);min-width:30px;flex-direction:row;gap:3px;font-size:10.5px;}
+.dx-show-labels .dx-group{height:100%;min-height:0;}
 .dx-icon{display:block;flex:0 0 auto;}
 .dx-glyph{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:14px;font-weight:700;font-family:"Segoe UI",Georgia,serif;}
 .dx-glyph.dx-glyph-italic{font-style:italic;font-weight:600;}
@@ -739,6 +747,20 @@ window.__ModuleLoader__.load({
 
 /* file tab panels */
 .dx-file-panels{display:flex;gap:0;flex:1 1 auto;min-height:0;}
+/* Compact File commands live in the constant-height ribbon. */
+.dx-file-compact{display:flex;align-items:center;gap:4px;height:100%;width:100%;overflow-x:auto;overflow-y:hidden;padding:0 4px;}
+.dx-file-compact .dx-tool{width:28px;height:28px;}
+/* The rich File backstage is an overlay, so it never changes the ribbon height. */
+.dx-backstage{
+  position:absolute;left:0;right:0;top:72px;bottom:0;z-index:40;display:flex;flex-direction:column;
+  background:var(--dx-surface);border-top:1px solid var(--dx-border);overflow:auto;
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
+}
+.dx-backstage-head{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--dx-border);
+}
+.dx-backstage-head h3{margin:0;flex:1 1 auto;font-size:14px;font-weight:600;}
+.dx-backstage .dx-file-panels{flex:1 1 auto;min-height:0;}
 .dx-file-col{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-right:1px solid var(--dx-border);min-width:230px;}
 .dx-file-col h4{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--dx-muted);}
 .dx-file-actions{display:flex;flex-direction:column;gap:4px;}
@@ -4376,103 +4398,197 @@ window.__ModuleLoader__.load({
     function FileRibbon(props) {
       const ctx = props.ctx;
       const api = props.api;
+      // The ribbon keeps its constant 1/16-viewport height; the rich File
+      // "backstage" opens below it as an overlay so it cannot change that
+      // height. Escape or Close returns to the document.
+      const [backstage, setBackstage] = React.useState(true);
+      const disabled = ctx.readOnly ? REASONS.readOnly : null;
+      const remoteDisabled = ctx.offline ? REASONS.offline : null;
+      const compact = (run, label, icon, extra) => {
+        const reason =
+          (extra && extra.reason) ||
+          (extra && extra.editing ? disabled : null) ||
+          (extra && extra.remote ? remoteDisabled : null) ||
+          null;
+        return h(
+          "button",
+          {
+            key: run + label,
+            type: "button",
+            className: "dx-tool dx-tool-small",
+            title: reason || label,
+            "aria-label": label,
+            disabled: Boolean(reason),
+            onClick: () => api.onAction(run),
+          },
+          h(Icon, { name: icon, size: 15 }),
+        );
+      };
       return h(
-        "div",
-        {
-          className: "dx-ribbon",
-          id: "dx-ribbon",
-          role: "tabpanel",
-          "aria-label": "file ribbon",
-          style: { minHeight: 0, alignItems: "stretch", maxHeight: 320 },
-        },
+        React.Fragment,
+        null,
         h(
           "div",
-          { className: "dx-file-panels" },
-          h(FileActions, { ctx, api }),
+          {
+            className: "dx-ribbon",
+            id: "dx-ribbon",
+            role: "tabpanel",
+            "aria-label": "file ribbon",
+          },
           h(
             "div",
-            { className: "dx-file-col" },
-            h("h4", null, "Export"),
+            { className: "dx-file-compact" },
+            compact("newDocument", "New document…", "newDoc", {
+              editing: true,
+            }),
+            compact("openDocument", "Open document…", "device", {
+              remote: true,
+            }),
+            compact("chooseFolder", "Choose folder…", "folder", {
+              remote: true,
+            }),
+            compact("save", "Save", "save", { editing: true, remote: true }),
+            compact("saveAs", "Save as…", "saveAs", {
+              editing: true,
+              remote: true,
+            }),
+            compact("export", "Export PDF", "export", { remote: true }),
             h(
+              "button",
+              {
+                key: "more",
+                type: "button",
+                className: "dx-tool dx-tool-small",
+                title: backstage ? "Hide File details" : "More File commands…",
+                "aria-label": "More File commands",
+                "aria-expanded": backstage,
+                onClick: () => setBackstage((value) => !value),
+              },
+              h(Icon, { name: "chevronDown", size: 15 }),
+            ),
+          ),
+        ),
+        backstage
+          ? h(
               "div",
-              { className: "dx-file-actions" },
-              // Prefer the formats the Host's engine actually reports.
-              (ctx.formats &&
-              Array.isArray(ctx.formats.export) &&
-              ctx.formats.export.length
-                ? ctx.formats.export
-                : ["docx", "pdf", "html", "md"]
-              ).map((format) =>
+              {
+                className: "dx-backstage",
+                role: "dialog",
+                "aria-modal": "false",
+                "aria-label": "File",
+                onKeyDown: (event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    setBackstage(false);
+                  }
+                },
+              },
+              h(
+                "div",
+                { className: "dx-backstage-head" },
+                h("h3", null, "File"),
                 h(
                   "button",
                   {
-                    key: format,
                     type: "button",
-                    className: "dx-file-action",
-                    title: `Export ${String(format).toUpperCase()}`,
-                    disabled: !ctx.bootstrap,
-                    onClick: () => api.onAction("export", format),
+                    className: "dx-tool dx-tool-small",
+                    title: "Close File",
+                    "aria-label": "Close File",
+                    onClick: () => setBackstage(false),
                   },
-                  h(Icon, { name: "export", size: 15 }),
-                  String(format).toUpperCase(),
+                  h(Icon, { name: "close", size: 15 }),
                 ),
               ),
-            ),
-          ),
-          h(
-            "div",
-            { className: "dx-file-col", style: { minWidth: 210 } },
-            h("h4", null, "Information"),
-            h(
-              "div",
-              { className: "dx-file-meta" },
-              h("b", null, ctx.title || "No document"),
-              h("br"),
-              ctx.bootstrap
-                ? `Format ${ctx.sourceFormat || "docx"} · revision ${ctx.revision}`
-                : "Open or create a document to start editing.",
-            ),
-            h(
-              "div",
-              { className: "dx-kv" },
-              h("span", null, "Workspace"),
-              h("b", null, ctx.workspace || "-"),
-              h("span", null, "Pages"),
-              h("b", null, String(ctx.pageCount || 0)),
-              h("span", null, "Words"),
-              h("b", null, String((ctx.stats && ctx.stats.words) || 0)),
-              h("span", null, "Tables"),
-              h("b", null, String((ctx.stats && ctx.stats.tables) || 0)),
-              h("span", null, "Images"),
-              h("b", null, String((ctx.stats && ctx.stats.images) || 0)),
-              h("span", null, "Read-only"),
-              h("b", null, ctx.readOnly ? "yes" : "no"),
-            ),
-            ctx.offline
-              ? h(
-                  "p",
-                  {
-                    className: "dx-file-meta",
-                    style: { color: "var(--dx-danger)" },
-                  },
-                  "The Host editor API is unavailable; editing stays local.",
-                )
-              : null,
-            ctx.canPickDirectory === false
-              ? h(
-                  "p",
-                  { className: "dx-file-meta" },
-                  "This Host exposes no native folder picker; use “Advanced: path”.",
-                )
-              : null,
-          ),
-          h(
-            "div",
-            { className: "dx-file-col", style: { flex: "1 1 auto" } },
-            h("h4", null, "Open documents"),
-            h(DocumentList, { ctx, api }),
-          ),
-        ),
+              h(
+                "div",
+                { className: "dx-file-panels" },
+                h(FileActions, { ctx, api }),
+                h(
+                  "div",
+                  { className: "dx-file-col" },
+                  h("h4", null, "Export"),
+                  h(
+                    "div",
+                    { className: "dx-file-actions" },
+                    // Prefer the formats the Host's engine actually reports.
+                    (ctx.formats &&
+                    Array.isArray(ctx.formats.export) &&
+                    ctx.formats.export.length
+                      ? ctx.formats.export
+                      : ["docx", "pdf", "html", "md"]
+                    ).map((format) =>
+                      h(
+                        "button",
+                        {
+                          key: format,
+                          type: "button",
+                          className: "dx-file-action",
+                          title: `Export ${String(format).toUpperCase()}`,
+                          disabled: !ctx.bootstrap,
+                          onClick: () => api.onAction("export", format),
+                        },
+                        h(Icon, { name: "export", size: 15 }),
+                        String(format).toUpperCase(),
+                      ),
+                    ),
+                  ),
+                ),
+                h(
+                  "div",
+                  { className: "dx-file-col", style: { minWidth: 210 } },
+                  h("h4", null, "Information"),
+                  h(
+                    "div",
+                    { className: "dx-file-meta" },
+                    h("b", null, ctx.title || "No document"),
+                    h("br"),
+                    ctx.bootstrap
+                      ? `Format ${ctx.sourceFormat || "docx"} · revision ${ctx.revision}`
+                      : "Open or create a document to start editing.",
+                  ),
+                  h(
+                    "div",
+                    { className: "dx-kv" },
+                    h("span", null, "Workspace"),
+                    h("b", null, ctx.workspace || "-"),
+                    h("span", null, "Pages"),
+                    h("b", null, String(ctx.pageCount || 0)),
+                    h("span", null, "Words"),
+                    h("b", null, String((ctx.stats && ctx.stats.words) || 0)),
+                    h("span", null, "Tables"),
+                    h("b", null, String((ctx.stats && ctx.stats.tables) || 0)),
+                    h("span", null, "Images"),
+                    h("b", null, String((ctx.stats && ctx.stats.images) || 0)),
+                    h("span", null, "Read-only"),
+                    h("b", null, ctx.readOnly ? "yes" : "no"),
+                  ),
+                  ctx.offline
+                    ? h(
+                        "p",
+                        {
+                          className: "dx-file-meta",
+                          style: { color: "var(--dx-danger)" },
+                        },
+                        "The Host editor API is unavailable; editing stays local.",
+                      )
+                    : null,
+                  ctx.canPickDirectory === false
+                    ? h(
+                        "p",
+                        { className: "dx-file-meta" },
+                        "This Host exposes no native folder picker; use “Advanced: path”.",
+                      )
+                    : null,
+                ),
+                h(
+                  "div",
+                  { className: "dx-file-col", style: { flex: "1 1 auto" } },
+                  h("h4", null, "Open documents"),
+                  h(DocumentList, { ctx, api }),
+                ),
+              ),
+            )
+          : null,
       );
     }
 
@@ -6269,7 +6385,8 @@ window.__ModuleLoader__.load({
             next.offline = true;
             next.notice =
               `The Host editor API is unavailable (${code}). ` +
-              "The document stays editable locally, but commands that need the Host are disabled.";
+              "The document stays editable locally, but commands that need the Host are disabled. " +
+              "Reload this Harness window, and restart the app once if the editor routes are still missing.";
           }
           patch(next);
           return { code, message };
@@ -7617,7 +7734,14 @@ window.__ModuleLoader__.load({
 
       const finishOpenedDocument = React.useCallback(
         async (result) => {
-          patch({ dialog: null, saving: false, error: null });
+          // Opening from the File backstage must reveal the document again.
+          patch({
+            dialog: null,
+            saving: false,
+            error: null,
+            tab: "home",
+            ribbonCollapsed: false,
+          });
           if (result.chip) {
             patch({
               sessionChip: result.chip,

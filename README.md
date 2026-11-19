@@ -63,10 +63,14 @@ Click the **Documents** icon in the left rail. The panel is a real editor, not a
 preview:
 
 - **Ribbon with the seven Word tabs**: File · Home · Insert · Design · Layout ·
-  References · View. Each tab is grouped the way Word groups its commands
-  (Home: Undo, Clipboard, Font, Paragraph, Styles, Editing; Insert: Pages,
-  Tables, Illustrations, Links, Header & Footer, Text, Symbols; and so on), and
-  the ribbon collapses with the chevron.
+  References · View. The ribbon keeps **exactly 1/16 of the window height on every
+  tab**, so switching tabs never moves the document; wide tabs scroll sideways
+  instead of growing taller, and the rich File details open as an overlay
+  (New, Open, Export, Information, open documents) while the ribbon height stays
+  fixed. Each tab is grouped the way Word groups its commands (Home: Undo,
+  Clipboard, Font, Paragraph, Styles, Editing; Insert: Pages, Tables,
+  Illustrations, Links, Header & Footer, Text, Symbols; and so on), and the
+  ribbon collapses with the chevron.
 - **Compact, icon-only commands**: buttons show only their icon and reveal the
   command name and shortcut in a hover tooltip (`Bold (Ctrl+B)`). **View → Show
   labels** restores text labels for anyone who prefers them, and the choice is
