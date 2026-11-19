@@ -1,0 +1,308 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "doc-fixture",
+  "metadata": {
+    "title": "Fixture document",
+    "keywords": ["fixture"],
+    "creator": "test",
+    "custom": {}
+  },
+  "theme": {
+    "fonts": {
+      "major": {
+        "latin": "Calibri Light",
+        "eastAsia": "",
+        "complexScript": ""
+      },
+      "minor": { "latin": "Calibri", "eastAsia": "", "complexScript": "" }
+    },
+    "colors": { "accent1": "#185ABD" }
+  },
+  "styles": {
+    "defaults": {
+      "run": { "fontFamily": "Calibri", "fontSize": 11, "color": "#1b1b1b" },
+      "paragraph": { "alignment": "left" }
+    },
+    "styles": {
+      "Normal": {
+        "id": "Normal",
+        "name": "Normal",
+        "type": "paragraph",
+        "isDefault": true,
+        "qFormat": true
+      },
+      "NoSpacing": {
+        "id": "NoSpacing",
+        "name": "No Spacing",
+        "type": "paragraph",
+        "qFormat": true
+      },
+      "Title": {
+        "id": "Title",
+        "name": "Title",
+        "type": "paragraph",
+        "qFormat": true,
+        "run": { "fontSize": 26, "bold": true }
+      },
+      "Heading1": {
+        "id": "Heading1",
+        "name": "Heading 1",
+        "type": "paragraph",
+        "qFormat": true,
+        "run": { "bold": true, "fontSize": 20 },
+        "paragraph": { "outlineLevel": 0 }
+      },
+      "Heading2": {
+        "id": "Heading2",
+        "name": "Heading 2",
+        "type": "paragraph",
+        "qFormat": true,
+        "basedOn": "Heading1",
+        "run": { "fontSize": 16 },
+        "paragraph": { "outlineLevel": 1 }
+      },
+      "Heading3": {
+        "id": "Heading3",
+        "name": "Heading 3",
+        "type": "paragraph",
+        "qFormat": true,
+        "basedOn": "Heading1",
+        "run": { "fontSize": 14 },
+        "paragraph": { "outlineLevel": 2 }
+      },
+      "Quote": {
+        "id": "Quote",
+        "name": "Quote",
+        "type": "paragraph",
+        "qFormat": true,
+        "run": { "italic": true }
+      },
+      "ListParagraph": {
+        "id": "ListParagraph",
+        "name": "List Paragraph",
+        "type": "paragraph",
+        "qFormat": true
+      }
+    }
+  },
+  "numbering": {
+    "abstract": {
+      "abs1": {
+        "id": "abs1",
+        "multiLevelType": "hybridMultilevel",
+        "levels": [
+          {
+            "level": 0,
+            "start": 1,
+            "numFmt": "bullet",
+            "lvlText": "\u2022",
+            "lvlJc": "left"
+          },
+          {
+            "level": 1,
+            "start": 1,
+            "numFmt": "decimal",
+            "lvlText": "%2.",
+            "lvlJc": "left"
+          }
+        ]
+      }
+    },
+    "nums": { "num1": { "id": "num1", "abstractId": "abs1" } }
+  },
+  "sections": [
+    {
+      "id": "sec1",
+      "breakBefore": "nextPage",
+      "titlePage": false,
+      "evenAndOdd": false,
+      "columns": { "count": 1, "space": 36 },
+      "headers": {
+        "default": {
+          "id": "hdr1",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "h1",
+              "style": "Normal",
+              "props": {},
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Quarterly report — header",
+                  "props": {}
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "footers": {},
+      "page": {
+        "width": 595.3,
+        "height": 841.9,
+        "orientation": "portrait",
+        "margins": {
+          "top": 72,
+          "right": 72,
+          "bottom": 72,
+          "left": 72,
+          "header": 36,
+          "footer": 36,
+          "gutter": 0
+        },
+        "pageColor": "#ffffff",
+        "preset": "A4"
+      },
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "p1",
+          "style": "Heading1",
+          "props": {},
+          "inlines": [
+            { "type": "text", "text": "Quarterly report", "props": {} }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "p2",
+          "style": "Normal",
+          "props": {},
+          "inlines": [
+            { "type": "text", "text": "Revenue ", "props": {} },
+            { "type": "text", "text": "grew", "props": { "bold": true } },
+            { "type": "text", "text": " this quarter", "props": {} },
+            { "type": "tab", "props": {} },
+            {
+              "type": "text",
+              "text": "and the outlook is stable.",
+              "props": { "italic": true }
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "id": "t1",
+          "props": { "style": "TableGrid" },
+          "grid": [160, 160],
+          "rows": [
+            {
+              "id": "r1",
+              "props": { "isHeader": true },
+              "cells": [
+                {
+                  "id": "c1",
+                  "props": {},
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "id": "p3",
+                      "style": "Normal",
+                      "props": {},
+                      "inlines": [
+                        { "type": "text", "text": "Region", "props": {} }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "c2",
+                  "props": {},
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "id": "p4",
+                      "style": "Normal",
+                      "props": {},
+                      "inlines": [
+                        { "type": "text", "text": "Revenue", "props": {} }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "p5",
+          "style": "Normal",
+          "props": { "alignment": "center" },
+          "inlines": [
+            {
+              "type": "text",
+              "text": "End of report",
+              "props": { "color": "#c00000" }
+            },
+            {
+              "type": "text",
+              "text": " (draft)",
+              "props": {
+                "revision": {
+                  "id": "rev1",
+                  "kind": "delete",
+                  "author": "reviewer"
+                }
+              }
+            },
+            {
+              "type": "text",
+              "text": " final",
+              "props": {
+                "revision": {
+                  "id": "rev2",
+                  "kind": "insert",
+                  "author": "reviewer"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "toc",
+          "id": "toc1",
+          "minLevel": 1,
+          "maxLevel": 3,
+          "hyperlinks": true,
+          "pageNumbers": true,
+          "tabLeader": "dot"
+        },
+        {
+          "type": "paragraph",
+          "id": "p6",
+          "style": "Normal",
+          "props": {},
+          "inlines": [{ "type": "break", "kind": "page", "props": {} }]
+        },
+        {
+          "type": "paragraph",
+          "id": "p7",
+          "style": "ListParagraph",
+          "props": { "numbering": { "numId": "num1", "level": 0 } },
+          "inlines": [
+            { "type": "text", "text": "Page two bullet", "props": {} }
+          ]
+        }
+      ]
+    }
+  ],
+  "footnotes": [],
+  "endnotes": [],
+  "comments": [],
+  "revisions": [],
+  "bookmarks": [],
+  "shapes": [],
+  "media": [],
+  "customXml": [],
+  "settings": {
+    "defaultTabStop": 720,
+    "evenAndOddHeaders": false,
+    "trackRevisions": false,
+    "autoHyphenation": false,
+    "defaultLanguage": "en-US"
+  },
+  "unknown": [],
+  "idSeq": 40
+}

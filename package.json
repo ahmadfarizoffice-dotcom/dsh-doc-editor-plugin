@@ -1,11 +1,11 @@
 {
   "name": "dsh-doc-editor-plugin",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "ahmadfarizoffice-dotcom",
-  "description": "Read, create, edit, convert and export Word documents (DOCX, legacy DOC, Apple Pages, ODT, RTF, HTML, Markdown, PDF) from the Harness, with a Documents panel in the main column.",
+  "description": "Read, create and edit Word-like documents inside DeepSeek Harness: a seven-tab ribbon editor (File, Home, Insert, Design, Layout, References, View) over DOCX/Pages/DOC/ODT/RTF/HTML/Markdown, with PDF export and 26 agent document tools.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",

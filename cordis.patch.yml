@@ -5,7 +5,7 @@
       name: dsh-doc-editor-plugin
       config:
         # Empty keeps $DSH_DOC_WORKSPACE, then ~/.dsh-documents.
-        workspaceDir: ''
+        workspaceDir: ""
         # Refuse every mutation when true (tools and the page both honour it).
         readOnly: false
         # Empty keeps the built-in tool subset; list exact document_* names to narrow it.

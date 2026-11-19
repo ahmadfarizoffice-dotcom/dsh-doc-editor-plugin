@@ -57,36 +57,70 @@ scripts and no dependencies**, so there is nothing to approve.
 
 ## What you get
 
-### Documents panel
+### Documents panel — a Word-like editor
 
-- Lists open documents with format, word count, section count and dirty state.
-- Shows page count, word/character/paragraph/table/image counts, the heading
-  outline and a text preview.
-- Creates documents, opens a workspace path, downloads DOCX, exports PDF/HTML/
-  Markdown, and deletes documents (with confirmation).
-- Honours read-only mode: mutations are disabled in the panel and the tools.
+Click the **Documents** icon in the left rail. The panel is a real editor, not a
+preview:
 
-### Tools (17)
+- **Ribbon with the seven Word tabs**: File · Home · Insert · Design · Layout ·
+  References · View. Each tab is grouped the way Word groups its commands
+  (Home: Undo, Clipboard, Font, Paragraph, Styles, Editing; Insert: Pages,
+  Tables, Illustrations, Links, Header & Footer, Text, Symbols; and so on), and
+  the ribbon collapses with the chevron.
+- **Edit by clicking into the page**: type in any paragraph or table cell,
+  press Enter to split a paragraph, Backspace at the start to merge with the
+  previous one, select text and use Bold/Italic/Underline, font family/size,
+  colour, highlight, alignment, lists, indents, line and paragraph spacing, or
+  the styles gallery. With a caret but no selection, character formatting is
+  applied to the whole paragraph, as Word does at an insertion point.
+- **Shortcuts**: `Ctrl+B/I/U`, `Ctrl+Z/Y`, `Ctrl+S`, `Ctrl+F`, `Ctrl+A`.
+- **Insert** tables, images, page and section breaks, hyperlinks, headers and
+  footers, a generated table of contents, footnotes and equations.
+- **Layout** changes margins, orientation, paper size and columns; **View**
+  changes zoom, ruler, formatting marks, page separators, read-only and focus
+  mode.
+- **Status bar**: page X of Y, word and character counts, language, zoom slider,
+  editing state and save state.
+- **File** tab and the left rail keep document management: new, open by path,
+  save, save as, export DOCX/PDF/HTML/Markdown, rename and delete.
 
-| Tool                    | Use                                                                      |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `document_list_formats` | Import/export matrix for this build                                      |
-| `document_create`       | New document (title, page size, initial paragraphs)                      |
-| `document_open`         | Import DOCX/DOTX/DOCM, Pages, legacy DOC, ODT, RTF, HTML, Markdown, text |
-| `document_get_metadata` | Metadata, statistics, compatibility report                               |
-| `document_get_outline`  | Heading outline with block ids                                           |
-| `document_get_text`     | Plain text with counts                                                   |
-| `document_search`       | Literal/regex search with context                                        |
-| `document_insert_text`  | Insert text at a position                                                |
-| `document_replace_text` | Replace a range, preserving formatting                                   |
-| `document_format_text`  | Character formatting over a range                                        |
-| `document_apply_style`  | Apply a named style                                                      |
-| `document_insert_table` | Table with data and header row                                           |
-| `document_ai_review`    | Mechanical checks; works without a model                                 |
-| `document_ai_summarize` | Extractive summary offline; abstractive with a provider                  |
-| `document_convert`      | Convert between DOCX/ODT/RTF/HTML/Markdown/TXT/PDF with losses           |
-| `document_export_pdf`   | Page-accurate PDF from the layout engine                                 |
-| `document_save`         | Save DOCX + lossless model snapshot                                      |
+Every change goes through the same engine the agent tools use, so the panel and
+the agent always see one document. Typing is applied locally for an instant
+caret and synced a few hundred milliseconds later; structural changes refetch
+the page map. Unsupported Word features (page colour, shapes, symbols,
+captions, cross-references, page-number fields in headers) are shown **disabled
+with a reason** rather than as dead buttons.
+
+### Tools (26)
+
+| Tool                              | Use                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `document_list_formats`           | Import/export matrix for this build                                      |
+| `document_create`                 | New document (title, page size, initial paragraphs)                      |
+| `document_open`                   | Import DOCX/DOTX/DOCM, Pages, legacy DOC, ODT, RTF, HTML, Markdown, text |
+| `document_get_metadata`           | Metadata, statistics, compatibility report                               |
+| `document_get_outline`            | Heading outline with block ids                                           |
+| `document_get_text`               | Plain text with counts                                                   |
+| `document_search`                 | Literal/regex search with context                                        |
+| `document_insert_text`            | Insert text at a position                                                |
+| `document_replace_text`           | Replace a range, preserving formatting                                   |
+| `document_format_text`            | Character formatting over a range                                        |
+| `document_format_paragraph`       | Alignment, spacing, indents                                              |
+| `document_apply_style`            | Apply a named style                                                      |
+| `document_insert_heading`         | Insert a heading (1–9)                                                   |
+| `document_insert_list`            | Bullet or numbered list                                                  |
+| `document_insert_table`           | Table with data and header row                                           |
+| `document_edit_table`             | Rows, columns, merges, splits                                            |
+| `document_insert_image`           | Image from a workspace path or base64                                    |
+| `document_insert_hyperlink`       | External URL or bookmark anchor                                          |
+| `document_insert_page_break`      | Page, line or column break                                               |
+| `document_insert_section_break`   | Section split, optionally landscape                                      |
+| `document_undo` / `document_redo` | Undo and redo through the session history                                |
+| `document_ai_review`              | Mechanical checks; works without a model                                 |
+| `document_ai_summarize`           | Extractive summary offline; abstractive with a provider                  |
+| `document_convert`                | Convert between DOCX/ODT/RTF/HTML/Markdown/TXT/PDF with losses           |
+| `document_export_pdf`             | Page-accurate PDF from the layout engine                                 |
+| `document_save`                   | Save DOCX + lossless model snapshot                                      |
 
 The full 50-tool surface, resources and prompts are available from the MCP
 server in the main repository; this bundle keeps the context cost small.
