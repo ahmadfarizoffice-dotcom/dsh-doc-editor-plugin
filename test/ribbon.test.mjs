@@ -379,3 +379,17 @@ test("Shift+Enter inserts a line break and keeps plain Enter splitting", () => {
     /offset: offset \+ 1[\s\S]{0,80}?end: \{ blockId, offset: offset \+ 1 \}/,
   );
 });
+
+test("opening by an advanced path reveals the document and prepares the session", () => {
+  const source = readFileSync(clientPath, "utf8");
+  // The advanced-path action must use the same flow as the folder browser:
+  // /open-path, workspace switch, session preparation, then the Home tab.
+  assert.match(source, /const openDocumentByPath = React\.useCallback/);
+  assert.match(source, /runOpenDocumentPathFlow\(trimmed,/);
+  assert.match(source, /advancedOpen: false,\s*tab: "home"/);
+  // It must not fall back to the plain legacy open that left the backstage up.
+  assert.doesNotMatch(
+    source,
+    /const result = await apiClient\.open\(trimmed\)/,
+  );
+});

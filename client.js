@@ -7531,11 +7531,37 @@ window.__ModuleLoader__.load({
         async (path) => {
           const trimmed = String(path || "").trim();
           if (!trimmed) return;
+          patch({ saving: true, error: null });
           try {
-            const result = await apiClient.open(trimmed);
-            patch({ dialog: null });
+            // Same flow as the folder browser: open through /open-path, switch
+            // the workspace to the file's folder, prepare a chat session and
+            // then reveal the document (the File backstage must not stay on
+            // top of the newly opened document).
+            const result = await runOpenDocumentPathFlow(trimmed, {
+              uiWorkspace: workspaceService(),
+              useBoundServices: false,
+            });
+            const next = {
+              dialog: null,
+              saving: false,
+              error: null,
+              advancedOpen: false,
+              tab: "home",
+              ribbonCollapsed: false,
+            };
+            if (result.chip) {
+              next.sessionChip = result.chip;
+              next.workspace = result.chip.path;
+              next.notice = result.chip.warning || "";
+            } else if (result.workspaceError) {
+              next.notice =
+                "The document opened, but the workspace could not be switched: " +
+                (result.workspaceError.message || result.workspaceError);
+            }
+            patch(next);
             await refreshList();
-            if (result.documentId) await loadDocument(result.documentId);
+            if (result.opened && result.opened.documentId)
+              await loadDocument(result.opened.documentId);
             else
               reportError(
                 HostError(
@@ -7544,6 +7570,7 @@ window.__ModuleLoader__.load({
                 ),
               );
           } catch (cause) {
+            patch({ saving: false, error: null });
             reportError(cause);
           }
         },
