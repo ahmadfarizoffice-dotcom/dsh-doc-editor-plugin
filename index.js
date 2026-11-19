@@ -167,16 +167,24 @@ export function apply(ctx, config = {}) {
             const route = url.pathname.slice(API_PREFIX.length) || "/";
 
             if (req.method === "GET" && route === "/list") {
-              const documents = service.sessions_().map(session => ({
-                id: session.id,
-                title: session.document.metadata.title ?? "Untitled document",
-                dirty: session.dirty,
-                format: session.sourceFormat ?? "docx",
-                words: session.document.metadata.statistics?.words ?? undefined,
-                modified: session.document.metadata.modified,
-                sections: session.document.sections.length,
-                blocks: session.document.sections.reduce((sum, section) => sum + section.blocks.length, 0),
-              }));
+              const documents = service.sessions_().map(session => {
+                let words;
+                try {
+                  words = service.metadata(session.id).stats?.words;
+                } catch {
+                  words = undefined;
+                }
+                return {
+                  id: session.id,
+                  title: session.document.metadata.title ?? "Untitled document",
+                  dirty: session.dirty,
+                  format: session.sourceFormat ?? "docx",
+                  words,
+                  modified: session.document.metadata.modified,
+                  sections: session.document.sections.length,
+                  blocks: session.document.sections.reduce((sum, section) => sum + section.blocks.length, 0),
+                };
+              });
               json(res, 200, { ok: true, workspace: workspaceDir, readOnly, documents });
               return;
             }
@@ -228,7 +236,10 @@ export function apply(ctx, config = {}) {
                 json(res, 400, { ok: false, error: { code: "FORMAT_UNSUPPORTED", message: `Cannot export ${format}.` } });
                 return;
               }
-              const exported = await service.exportDocument(documentId, format);
+              const exported =
+                format === "pdf"
+                  ? await service.exportPdf(documentId)
+                  : await service.exportDocument(documentId, format);
               const bytes = Buffer.from(exported.dataBase64 ?? "", "base64");
               const types = {
                 docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

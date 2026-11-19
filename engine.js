@@ -191084,6 +191084,7 @@ var odtAdapter = {
 
 // packages/core/dist/formats/pages.js
 var SF_NS = "http://developer.apple.com/namespaces/sf";
+var MAX_INDEX_XML_BYTES = 64 * 1024 * 1024;
 var MAX_UNKNOWN_ELEMENT_KINDS = 64;
 var MAX_IWA_FRAME_BYTES = 64 * 1024 * 1024;
 var MAX_IWA_TOTAL_BYTES = 128 * 1024 * 1024;
@@ -191278,9 +191279,13 @@ function importPages09(parts, options) {
   const xmlBytes = parts.get("index.xml");
   if (!xmlBytes)
     throw new FormatError("FORMAT_UNSUPPORTED_CONTAINER", "Pages package is missing index.xml (Pages '09)");
+  if (xmlBytes.byteLength > MAX_INDEX_XML_BYTES)
+    throw new FormatError("FORMAT_TOO_LARGE", `Pages '09 index.xml is ${xmlBytes.byteLength} bytes, above the ${MAX_INDEX_XML_BYTES} byte limit`);
   let xml = xmlBytes.toString("utf8");
   if (xml.charCodeAt(0) === 65279)
     xml = xml.slice(1);
+  if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml))
+    throw new FormatError("FORMAT_UNSUPPORTED_CONTAINER", "Pages '09 index.xml declares a DOCTYPE or entity; entity expansion and external resolution are not performed");
   let document;
   try {
     document = parseXml(xml, "index.xml");
@@ -191455,8 +191460,8 @@ function snappyDecompress(input) {
     throw new Error(`Snappy stream ended after ${written} of ${output.length} bytes`);
   return output;
 }
-function readIwaFile(path3, bytes, losses, budget) {
-  const frames = [];
+function scanIwaFile(path3, bytes, losses, budget, out) {
+  let frames = 0;
   let offset = 0;
   let index = 0;
   while (offset < bytes.length) {
@@ -191497,6 +191502,7 @@ function readIwaFile(path3, bytes, losses, budget) {
       losses.partial("pages.iwaFrame", `Unsupported IWA frame control byte 0x${control.toString(16).padStart(2, "0")}`, path3, false);
       continue;
     }
+    frames += 1;
     if (data.length === 0)
       continue;
     if (data.length > budget.bytes) {
@@ -191505,9 +191511,9 @@ function readIwaFile(path3, bytes, losses, budget) {
       break;
     }
     budget.bytes -= data.length;
-    frames.push({ index, data });
+    scanMessage(data, 0, out);
   }
-  return { path: path3, frames };
+  return frames;
 }
 var utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 var METADATA_PREFIXES = ["com.apple.", "TSStyle", "TSWP", "TST", "TSA"];
@@ -191608,21 +191614,16 @@ function importPagesIwa(parts, options) {
     bytes: MAX_IWA_TOTAL_BYTES,
     frames: MAX_IWA_FRAMES_TOTAL
   };
-  const files = [];
+  const strings = [];
+  let frameCount = 0;
   for (const path3 of iwaEntries(parts)) {
     const bytes = parts.get(path3);
     if (!bytes)
       continue;
-    files.push(readIwaFile(path3, bytes, losses, budget));
+    frameCount += scanIwaFile(path3, bytes, losses, budget, strings);
     if (budget.frames <= 0 || budget.bytes <= 0)
       break;
   }
-  const strings = [];
-  for (const file of files) {
-    for (const frame of file.frames)
-      scanMessage(frame.data, 0, strings);
-  }
-  const frameCount = files.reduce((sum, file) => sum + file.frames.length, 0);
   const ctx = createDocumentContext({
     metadata: {
       title: titleFromFileName5(options.fileName) ?? "Pages preview",

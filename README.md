@@ -35,6 +35,11 @@ The same spec is accepted by the agent tool:
 plugin_manager action: install_bundle target: github:ahmadfarizoffice-dotcom/dsh-doc-editor-plugin
 ```
 
+Both forms are the same Git package. If the page reports
+`failedAt: "spec-host"` (“connection to github.com timed out”), the Harness’s
+pre-install reachability check failed before pnpm ran; retry, or paste the
+`github:` form, which skips that pre-check on this release.
+
 Installation runs `pnpm` against the profile, so pnpm must be on `PATH` (the
 Harness launcher usually supplies it). With HMR the bundle activates
 immediately; without HMR, restart the runtime. The plugin has **no install

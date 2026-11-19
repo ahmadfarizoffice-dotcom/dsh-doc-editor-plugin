@@ -197,7 +197,7 @@ window.__ModuleLoader__.load({
         );
 
       const meta = detail?.metadata ?? {};
-      const stats = meta.statistics ?? {};
+      const stats = meta.stats ?? meta.statistics ?? {};
       const outline = detail?.outline ?? [];
       const selectedRow = documents.find(item => item.id === selected);
 
