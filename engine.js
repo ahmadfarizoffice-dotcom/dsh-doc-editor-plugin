@@ -197027,7 +197027,10 @@ var DocumentService = class {
       ...new Set(rows.filter((row) => row.canImport).flatMap((row) => row.extensions))
     ];
     const exportExtensions = [
-      .../* @__PURE__ */ new Set([...rows.filter((row) => row.canExport).flatMap((row) => row.extensions), "pdf"])
+      .../* @__PURE__ */ new Set([
+        ...rows.filter((row) => row.canExport).flatMap((row) => row.extensions),
+        "pdf"
+      ])
     ];
     return {
       import: importExtensions,
@@ -197093,7 +197096,10 @@ var DocumentService = class {
   }
   async tryConvert() {
     return {
-      convert: (doc, options) => convert(doc, { from: "model", to: options.to })
+      convert: (doc, options) => convert(doc, {
+        from: "model",
+        to: options.to
+      })
     };
   }
   async tryAi() {
