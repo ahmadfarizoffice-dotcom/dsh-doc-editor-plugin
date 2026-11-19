@@ -9,11 +9,7 @@
 import os from "node:os";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
-import {
-  DocumentService,
-  invokeTool,
-  buildToolManifest,
-} from "./engine.js";
+import { DocumentService, invokeTool, buildToolManifest } from "./engine.js";
 
 export const inject = ["tools"];
 
@@ -43,7 +39,8 @@ const DEFAULT_TOOLS = [
 ];
 
 function resolveWorkspace(config) {
-  const configured = typeof config?.workspaceDir === "string" ? config.workspaceDir.trim() : "";
+  const configured =
+    typeof config?.workspaceDir === "string" ? config.workspaceDir.trim() : "";
   if (configured) return path.resolve(configured);
   const env = (process.env.DSH_DOC_WORKSPACE ?? "").trim();
   if (env) return path.resolve(env);
@@ -90,8 +87,12 @@ function safeId(value) {
 
 export function apply(ctx, config = {}) {
   const workspaceDir = resolveWorkspace(config);
-  const readOnly = config?.readOnly === true || process.env.DSH_DOC_READ_ONLY === "1";
-  const toolNames = Array.isArray(config?.tools) && config.tools.length > 0 ? config.tools : DEFAULT_TOOLS;
+  const readOnly =
+    config?.readOnly === true || process.env.DSH_DOC_READ_ONLY === "1";
+  const toolNames =
+    Array.isArray(config?.tools) && config.tools.length > 0
+      ? config.tools
+      : DEFAULT_TOOLS;
   const extraRoot = path.resolve(process.cwd());
   const allowedReadRoots = Array.from(new Set([workspaceDir, extraRoot]));
 
@@ -107,7 +108,7 @@ export function apply(ctx, config = {}) {
   });
 
   const manifest = buildToolManifest();
-  const byName = new Map(manifest.tools.map(tool => [tool.name, tool]));
+  const byName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
 
   for (const name of toolNames) {
     const entry = byName.get(name);
@@ -134,7 +135,9 @@ export function apply(ctx, config = {}) {
           const result = await invokeTool(service, name, args ?? {});
           if (result.ok === false) {
             const detail = result.error;
-            throw new Error(`${detail?.code ?? "DOCUMENT_ERROR"}: ${detail?.message ?? "Document operation failed"}`);
+            throw new Error(
+              `${detail?.code ?? "DOCUMENT_ERROR"}: ${detail?.message ?? "Document operation failed"}`,
+            );
           }
           return result.data ?? null;
         },
@@ -155,11 +158,23 @@ export function apply(ctx, config = {}) {
         async handler(req, res) {
           try {
             if (!originAllowed(req, webServer.getOrigin())) {
-              json(res, 403, { ok: false, error: { code: "ORIGIN_REFUSED", message: "Cross-origin request refused." } });
+              json(res, 403, {
+                ok: false,
+                error: {
+                  code: "ORIGIN_REFUSED",
+                  message: "Cross-origin request refused.",
+                },
+              });
               return;
             }
             if (req.headers[REQUEST_HEADER] !== "1") {
-              json(res, 403, { ok: false, error: { code: "HEADER_REQUIRED", message: "Missing the Documents page request header." } });
+              json(res, 403, {
+                ok: false,
+                error: {
+                  code: "HEADER_REQUIRED",
+                  message: "Missing the Documents page request header.",
+                },
+              });
               return;
             }
             await ready;
@@ -167,7 +182,7 @@ export function apply(ctx, config = {}) {
             const route = url.pathname.slice(API_PREFIX.length) || "/";
 
             if (req.method === "GET" && route === "/list") {
-              const documents = service.sessions_().map(session => {
+              const documents = service.sessions_().map((session) => {
                 let words;
                 try {
                   words = service.metadata(session.id).stats?.words;
@@ -182,18 +197,32 @@ export function apply(ctx, config = {}) {
                   words,
                   modified: session.document.metadata.modified,
                   sections: session.document.sections.length,
-                  blocks: session.document.sections.reduce((sum, section) => sum + section.blocks.length, 0),
+                  blocks: session.document.sections.reduce(
+                    (sum, section) => sum + section.blocks.length,
+                    0,
+                  ),
                 };
               });
-              json(res, 200, { ok: true, workspace: workspaceDir, readOnly, documents });
+              json(res, 200, {
+                ok: true,
+                workspace: workspaceDir,
+                readOnly,
+                documents,
+              });
               return;
             }
 
             if (req.method === "POST" && route === "/create") {
               const body = await readJsonBody(req);
               const created = await service.createDocument({
-                title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Untitled document",
-                paragraphs: typeof body.text === "string" && body.text.trim() ? [body.text.trim()] : undefined,
+                title:
+                  typeof body.title === "string" && body.title.trim()
+                    ? body.title.trim()
+                    : "Untitled document",
+                paragraphs:
+                  typeof body.text === "string" && body.text.trim()
+                    ? [body.text.trim()]
+                    : undefined,
               });
               json(res, 200, { ok: true, documentId: created.documentId });
               return;
@@ -202,11 +231,22 @@ export function apply(ctx, config = {}) {
             if (req.method === "POST" && route === "/open") {
               const body = await readJsonBody(req);
               if (typeof body.path !== "string" || !body.path.trim()) {
-                json(res, 400, { ok: false, error: { code: "PATH_REQUIRED", message: "Give a path to a document inside the workspace." } });
+                json(res, 400, {
+                  ok: false,
+                  error: {
+                    code: "PATH_REQUIRED",
+                    message: "Give a path to a document inside the workspace.",
+                  },
+                });
                 return;
               }
               const opened = await service.openDocument(body.path.trim());
-              json(res, 200, { ok: true, documentId: opened.documentId, warnings: opened.warnings, report: opened.report });
+              json(res, 200, {
+                ok: true,
+                documentId: opened.documentId,
+                warnings: opened.warnings,
+                report: opened.report,
+              });
               return;
             }
 
@@ -220,7 +260,10 @@ export function apply(ctx, config = {}) {
                 ok: true,
                 metadata,
                 outline,
-                text: text.length > 6000 ? `${text.slice(0, 6000)}\n\n[Text truncated by the Documents panel]` : text,
+                text:
+                  text.length > 6000
+                    ? `${text.slice(0, 6000)}\n\n[Text truncated by the Documents panel]`
+                    : text,
                 truncated: text.length > 6000,
                 layout: service.getPageInfo(documentId),
                 sourceFormat: session.sourceFormat ?? "docx",
@@ -230,10 +273,28 @@ export function apply(ctx, config = {}) {
 
             if (req.method === "GET" && route === "/export") {
               const documentId = safeId(url.searchParams.get("id"));
-              const format = String(url.searchParams.get("format") ?? "docx").toLowerCase();
-              const allowed = new Set(["docx", "dotx", "docm", "pdf", "html", "md", "txt", "odt", "rtf"]);
+              const format = String(
+                url.searchParams.get("format") ?? "docx",
+              ).toLowerCase();
+              const allowed = new Set([
+                "docx",
+                "dotx",
+                "docm",
+                "pdf",
+                "html",
+                "md",
+                "txt",
+                "odt",
+                "rtf",
+              ]);
               if (!allowed.has(format)) {
-                json(res, 400, { ok: false, error: { code: "FORMAT_UNSUPPORTED", message: `Cannot export ${format}.` } });
+                json(res, 400, {
+                  ok: false,
+                  error: {
+                    code: "FORMAT_UNSUPPORTED",
+                    message: `Cannot export ${format}.`,
+                  },
+                });
                 return;
               }
               const exported =
@@ -252,7 +313,9 @@ export function apply(ctx, config = {}) {
                 odt: "application/vnd.oasis.opendocument.text",
                 rtf: "application/rtf",
               };
-              const title = (service.metadata(documentId).metadata?.title ?? documentId)
+              const title = (
+                service.metadata(documentId).metadata?.title ?? documentId
+              )
                 .replace(/[^\w .-]+/g, "_")
                 .slice(0, 80);
               res.writeHead(200, {
@@ -268,13 +331,21 @@ export function apply(ctx, config = {}) {
             if (req.method === "POST" && route === "/delete") {
               const body = await readJsonBody(req);
               const documentId = safeId(body.id);
-              await service.closeDocument(documentId, { discardUnsaved: true }).catch(() => undefined);
+              await service
+                .closeDocument(documentId, { discardUnsaved: true })
+                .catch(() => undefined);
               await service.deleteDocument(documentId);
               json(res, 200, { ok: true });
               return;
             }
 
-            json(res, 404, { ok: false, error: { code: "NOT_FOUND", message: "Unknown Documents API route." } });
+            json(res, 404, {
+              ok: false,
+              error: {
+                code: "NOT_FOUND",
+                message: "Unknown Documents API route.",
+              },
+            });
           } catch (error) {
             json(res, 200, {
               ok: false,

@@ -79,7 +79,8 @@ window.__ModuleLoader__.load({
       });
       const type = response.headers.get("content-type") ?? "";
       if (!type.includes("application/json")) {
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        if (!response.ok)
+          throw new Error(`Request failed (${response.status})`);
         return response;
       }
       const payload = await response.json();
@@ -91,9 +92,12 @@ window.__ModuleLoader__.load({
     }
 
     function download(documentId, format, title) {
-      return fetch(`${API}/export?id=${encodeURIComponent(documentId)}&format=${encodeURIComponent(format)}`, {
-        headers: HEADER,
-      }).then(async response => {
+      return fetch(
+        `${API}/export?id=${encodeURIComponent(documentId)}&format=${encodeURIComponent(format)}`,
+        {
+          headers: HEADER,
+        },
+      ).then(async (response) => {
         if (!response.ok) {
           const text = await response.text().catch(() => "");
           throw new Error(text || `Export failed (${response.status})`);
@@ -140,12 +144,14 @@ window.__ModuleLoader__.load({
         void refresh();
       }, [refresh]);
 
-      const openDetail = React.useCallback(async documentId => {
+      const openDetail = React.useCallback(async (documentId) => {
         setSelected(documentId);
         setDetail(null);
         setConfirmDelete(false);
         try {
-          const payload = await call(`/document?id=${encodeURIComponent(documentId)}`);
+          const payload = await call(
+            `/document?id=${encodeURIComponent(documentId)}`,
+          );
           setDetail(payload);
           setError("");
         } catch (cause) {
@@ -169,19 +175,29 @@ window.__ModuleLoader__.load({
 
       const create = () =>
         run(
-          () => call("/create", { method: "POST", body: JSON.stringify({ title: newTitle.trim() || "Untitled document" }) }),
+          () =>
+            call("/create", {
+              method: "POST",
+              body: JSON.stringify({
+                title: newTitle.trim() || "Untitled document",
+              }),
+            }),
           async (result, list) => {
             setNewTitle("");
             const id = result.documentId;
-            const exists = list.some(item => item.id === id);
+            const exists = list.some((item) => item.id === id);
             if (exists) await openDetail(id);
           },
         );
 
       const open = () =>
         run(
-          () => call("/open", { method: "POST", body: JSON.stringify({ path: openPath.trim() }) }),
-          async result => {
+          () =>
+            call("/open", {
+              method: "POST",
+              body: JSON.stringify({ path: openPath.trim() }),
+            }),
+          async (result) => {
             setOpenPath("");
             await openDetail(result.documentId);
           },
@@ -189,7 +205,11 @@ window.__ModuleLoader__.load({
 
       const remove = () =>
         run(
-          () => call("/delete", { method: "POST", body: JSON.stringify({ id: selected }) }),
+          () =>
+            call("/delete", {
+              method: "POST",
+              body: JSON.stringify({ id: selected }),
+            }),
           async () => {
             setSelected(null);
             setDetail(null);
@@ -199,7 +219,7 @@ window.__ModuleLoader__.load({
       const meta = detail?.metadata ?? {};
       const stats = meta.stats ?? meta.statistics ?? {};
       const outline = detail?.outline ?? [];
-      const selectedRow = documents.find(item => item.id === selected);
+      const selectedRow = documents.find((item) => item.id === selected);
 
       return h(
         "div",
@@ -209,30 +229,45 @@ window.__ModuleLoader__.load({
           "header",
           { className: "dshdoc-head" },
           h("h1", { className: "dshdoc-title" }, "Documents"),
-          h("span", { className: "dshdoc-sub" }, readOnly ? "read-only" : workspace || "workspace"),
-          h("span", { className: "dshdoc-spacer" }),
           h(
-            "input",
-            {
-              className: "dshdoc-input",
-              placeholder: "New document title",
-              value: newTitle,
-              disabled: busy || readOnly,
-              onChange: event => setNewTitle(event.target.value),
-              onKeyDown: event => {
-                if (event.key === "Enter") void create();
-              },
-              "aria-label": "New document title",
+            "span",
+            { className: "dshdoc-sub" },
+            readOnly ? "read-only" : workspace || "workspace",
+          ),
+          h("span", { className: "dshdoc-spacer" }),
+          h("input", {
+            className: "dshdoc-input",
+            placeholder: "New document title",
+            value: newTitle,
+            disabled: busy || readOnly,
+            onChange: (event) => setNewTitle(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === "Enter") void create();
             },
+            "aria-label": "New document title",
+          }),
+          h(
+            "button",
+            {
+              className: "dshdoc-btn primary",
+              onClick: () => void create(),
+              disabled: busy || readOnly,
+            },
+            "New document",
           ),
           h(
             "button",
-            { className: "dshdoc-btn primary", onClick: () => void create(), disabled: busy || readOnly },
-            "New document",
+            {
+              className: "dshdoc-btn",
+              onClick: () => void refresh(),
+              disabled: busy,
+            },
+            "Refresh",
           ),
-          h("button", { className: "dshdoc-btn", onClick: () => void refresh(), disabled: busy }, "Refresh"),
         ),
-        error ? h("div", { className: "dshdoc-error", role: "alert" }, error) : null,
+        error
+          ? h("div", { className: "dshdoc-error", role: "alert" }, error)
+          : null,
         h(
           "div",
           { className: "dshdoc-body" },
@@ -248,15 +283,19 @@ window.__ModuleLoader__.load({
                 placeholder: "Open a file path",
                 value: openPath,
                 disabled: busy,
-                onChange: event => setOpenPath(event.target.value),
-                onKeyDown: event => {
+                onChange: (event) => setOpenPath(event.target.value),
+                onKeyDown: (event) => {
                   if (event.key === "Enter" && openPath.trim()) void open();
                 },
                 "aria-label": "Path of a document to open",
               }),
               h(
                 "button",
-                { className: "dshdoc-btn", onClick: () => void open(), disabled: busy || !openPath.trim() },
+                {
+                  className: "dshdoc-btn",
+                  onClick: () => void open(),
+                  disabled: busy || !openPath.trim(),
+                },
                 "Open",
               ),
             ),
@@ -266,7 +305,7 @@ window.__ModuleLoader__.load({
                   { className: "dshdoc-empty" },
                   "No open documents. Create one here, open a DOCX/Pages/DOC file by path, or ask the agent to call the document tools.",
                 )
-              : documents.map(item =>
+              : documents.map((item) =>
                   h(
                     "button",
                     {
@@ -284,7 +323,9 @@ window.__ModuleLoader__.load({
                         item.format,
                         item.words ? `${item.words} words` : null,
                         item.dirty ? "unsaved" : null,
-                        item.sections ? `${item.sections} section${item.sections === 1 ? "" : "s"}` : null,
+                        item.sections
+                          ? `${item.sections} section${item.sections === 1 ? "" : "s"}`
+                          : null,
                       ]
                         .filter(Boolean)
                         .join(" · "),
@@ -306,22 +347,48 @@ window.__ModuleLoader__.load({
                 : h(
                     React.Fragment,
                     null,
-                    h("h2", { className: "dshdoc-h2" }, meta.metadata?.title ?? selectedRow?.title ?? selected),
+                    h(
+                      "h2",
+                      { className: "dshdoc-h2" },
+                      meta.metadata?.title ?? selectedRow?.title ?? selected,
+                    ),
                     h(
                       "div",
                       { className: "dshdoc-meta" },
                       `${detail.sourceFormat ?? "docx"} · ${detail.layout?.pageCount ?? "?"} page(s) · modified ${
-                        meta.metadata?.modified ? new Date(meta.metadata.modified).toLocaleString() : "unknown"
+                        meta.metadata?.modified
+                          ? new Date(meta.metadata.modified).toLocaleString()
+                          : "unknown"
                       }`,
                     ),
                     h(
                       "div",
                       { className: "dshdoc-stats" },
-                      h("span", { className: "dshdoc-chip" }, `${stats.words ?? 0} words`),
-                      h("span", { className: "dshdoc-chip" }, `${stats.characters ?? 0} characters`),
-                      h("span", { className: "dshdoc-chip" }, `${stats.paragraphs ?? 0} paragraphs`),
-                      h("span", { className: "dshdoc-chip" }, `${stats.tables ?? 0} tables`),
-                      h("span", { className: "dshdoc-chip" }, `${stats.images ?? 0} images`),
+                      h(
+                        "span",
+                        { className: "dshdoc-chip" },
+                        `${stats.words ?? 0} words`,
+                      ),
+                      h(
+                        "span",
+                        { className: "dshdoc-chip" },
+                        `${stats.characters ?? 0} characters`,
+                      ),
+                      h(
+                        "span",
+                        { className: "dshdoc-chip" },
+                        `${stats.paragraphs ?? 0} paragraphs`,
+                      ),
+                      h(
+                        "span",
+                        { className: "dshdoc-chip" },
+                        `${stats.tables ?? 0} tables`,
+                      ),
+                      h(
+                        "span",
+                        { className: "dshdoc-chip" },
+                        `${stats.images ?? 0} images`,
+                      ),
                     ),
                     h(
                       "div",
@@ -332,9 +399,11 @@ window.__ModuleLoader__.load({
                           className: "dshdoc-btn",
                           disabled: busy,
                           onClick: () =>
-                            void download(selected, "docx", meta.metadata?.title ?? selected).catch(cause =>
-                              setError(cause.message),
-                            ),
+                            void download(
+                              selected,
+                              "docx",
+                              meta.metadata?.title ?? selected,
+                            ).catch((cause) => setError(cause.message)),
                         },
                         "Download DOCX",
                       ),
@@ -344,9 +413,11 @@ window.__ModuleLoader__.load({
                           className: "dshdoc-btn",
                           disabled: busy,
                           onClick: () =>
-                            void download(selected, "pdf", meta.metadata?.title ?? selected).catch(cause =>
-                              setError(cause.message),
-                            ),
+                            void download(
+                              selected,
+                              "pdf",
+                              meta.metadata?.title ?? selected,
+                            ).catch((cause) => setError(cause.message)),
                         },
                         "Export PDF",
                       ),
@@ -356,9 +427,11 @@ window.__ModuleLoader__.load({
                           className: "dshdoc-btn",
                           disabled: busy,
                           onClick: () =>
-                            void download(selected, "html", meta.metadata?.title ?? selected).catch(cause =>
-                              setError(cause.message),
-                            ),
+                            void download(
+                              selected,
+                              "html",
+                              meta.metadata?.title ?? selected,
+                            ).catch((cause) => setError(cause.message)),
                         },
                         "Export HTML",
                       ),
@@ -368,9 +441,11 @@ window.__ModuleLoader__.load({
                           className: "dshdoc-btn",
                           disabled: busy,
                           onClick: () =>
-                            void download(selected, "md", meta.metadata?.title ?? selected).catch(cause =>
-                              setError(cause.message),
-                            ),
+                            void download(
+                              selected,
+                              "md",
+                              meta.metadata?.title ?? selected,
+                            ).catch((cause) => setError(cause.message)),
                         },
                         "Markdown",
                       ),
@@ -381,7 +456,10 @@ window.__ModuleLoader__.load({
                             {
                               className: "dshdoc-btn danger",
                               disabled: busy,
-                              onClick: () => (confirmDelete ? void remove() : setConfirmDelete(true)),
+                              onClick: () =>
+                                confirmDelete
+                                  ? void remove()
+                                  : setConfirmDelete(true),
                               onBlur: () => setConfirmDelete(false),
                             },
                             confirmDelete ? "Confirm delete" : "Delete",
@@ -400,7 +478,12 @@ window.__ModuleLoader__.load({
                                 "li",
                                 {
                                   key: `${entry.blockId ?? index}-${index}`,
-                                  style: { "--lvl": Math.max(0, (entry.level ?? 1) - 1) },
+                                  style: {
+                                    "--lvl": Math.max(
+                                      0,
+                                      (entry.level ?? 1) - 1,
+                                    ),
+                                  },
                                 },
                                 entry.text,
                               ),
@@ -409,8 +492,18 @@ window.__ModuleLoader__.load({
                         )
                       : null,
                     h("div", { className: "dshdoc-h3" }, "Text"),
-                    h("pre", { className: "dshdoc-pre" }, detail.text || "(empty document)"),
-                    detail.truncated ? h("div", { className: "dshdoc-note" }, "Text is truncated in this panel.") : null,
+                    h(
+                      "pre",
+                      { className: "dshdoc-pre" },
+                      detail.text || "(empty document)",
+                    ),
+                    detail.truncated
+                      ? h(
+                          "div",
+                          { className: "dshdoc-note" },
+                          "Text is truncated in this panel.",
+                        )
+                      : null,
                     h(
                       "div",
                       { className: "dshdoc-note" },
@@ -427,7 +520,12 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.slots.inject("sidebar.panellist", () =>
           ctx.slots.register(
-            { name: "sidebar.panellist", id: PANEL_ID, order: 30, label: () => "Documents" },
+            {
+              name: "sidebar.panellist",
+              id: PANEL_ID,
+              order: 30,
+              label: () => "Documents",
+            },
             DocIcon,
           ),
         );

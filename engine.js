@@ -197011,52 +197011,30 @@ var DocumentService = class {
     };
   }
   async listFormats() {
-    const base = {
-      import: [
-        "docx",
-        "dotx",
-        "docm",
-        "doc",
-        "odt",
-        "ott",
-        "rtf",
-        "html",
-        "htm",
-        "md",
-        "markdown",
-        "txt",
-        "xlsx",
-        "xls",
-        "pptx",
-        "ppt",
-        "pdf"
-      ],
-      export: [
-        "docx",
-        "dotx",
-        "docm",
-        "pdf",
-        "html",
-        "md",
-        "txt",
-        "odt",
-        "rtf"
-      ],
-      pdfImport: false
-    };
     const formats = await this.tryFormats();
     if (!formats) {
       return {
-        ...base,
+        import: ["docx", "dotx", "docm"],
+        export: ["docx", "dotx", "docm", "pdf"],
+        pdfImport: false,
         availability: "core-only",
         note: "Only DOCX and PDF are implemented in this build",
         formats: []
       };
     }
+    const rows = formats.availableFormats();
+    const importExtensions = [
+      ...new Set(rows.filter((row) => row.canImport).flatMap((row) => row.extensions))
+    ];
+    const exportExtensions = [
+      .../* @__PURE__ */ new Set([...rows.filter((row) => row.canExport).flatMap((row) => row.extensions), "pdf"])
+    ];
     return {
-      ...base,
+      import: importExtensions,
+      export: exportExtensions,
+      pdfImport: false,
       availability: "full",
-      formats: formats.availableFormats?.() ?? []
+      formats: rows
     };
   }
   /* ------------------------------------------------------------------- AI */
