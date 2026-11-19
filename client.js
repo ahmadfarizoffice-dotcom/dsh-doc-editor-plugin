@@ -69,6 +69,137 @@ window.__ModuleLoader__.load({
      */
     const LABELS_KEY = "dsh-doc:labels";
 
+    /**
+     * `localStorage` key for the user-chosen ribbon height in CSS pixels. The
+     * default is 1/10 of the viewport (clamped); dragging the handle stores an
+     * explicit pixel value here and double-clicking removes it again.
+     */
+    const RIBBON_HEIGHT_KEY = "dsh-doc:ribbon-height";
+
+    /** Never shorter than 64px: captions, labels mode and the gallery clip below. */
+    const RIBBON_MIN_HEIGHT = 64;
+
+    /** The 1/10 default is clamped to a band that fits every tab's content. */
+    const RIBBON_DEFAULT_MIN = 72;
+    const RIBBON_DEFAULT_MAX = 240;
+
+    /** A dragged ribbon stops at half the viewport so the document keeps room. */
+    const RIBBON_MAX_VIEWPORT_RATIO = 0.5;
+
+    /** One arrow key or Home/End step while the handle has focus. */
+    const RIBBON_KEYBOARD_STEP = 16;
+
+    /**
+     * `localStorage` key for the folder the in-panel file chooser reopens. It is
+     * written when the user acts on a folder: opening a document from it,
+     * picking it with the native picker, or switching the workspace to it.
+     */
+    const LAST_FOLDER_KEY = "dsh-doc:last-folder";
+
+    /** The browser's viewport height, or 0 where there is no viewport (SSR). */
+    function viewportHeight() {
+      return typeof window !== "undefined" &&
+        Number.isFinite(window.innerHeight) &&
+        window.innerHeight > 0
+        ? window.innerHeight
+        : 0;
+    }
+
+    /** Largest allowed ribbon height: 50% of the viewport, never below the floor. */
+    function ribbonMaxHeight(height) {
+      const viewport = Number(height);
+      if (!Number.isFinite(viewport) || viewport <= 0)
+        return RIBBON_DEFAULT_MAX;
+      return Math.max(
+        RIBBON_MIN_HEIGHT,
+        Math.round(viewport * RIBBON_MAX_VIEWPORT_RATIO),
+      );
+    }
+
+    /** The 1/10-of-viewport default height, clamped to the sane band. */
+    function defaultRibbonHeight(height) {
+      const viewport = Number(height);
+      const ratio =
+        Number.isFinite(viewport) && viewport > 0
+          ? viewport / 10
+          : RIBBON_DEFAULT_MIN;
+      return Math.round(
+        Math.min(RIBBON_DEFAULT_MAX, Math.max(RIBBON_DEFAULT_MIN, ratio)),
+      );
+    }
+
+    /** Clamp one requested height to 64px … 50vh, rounded to whole pixels. */
+    function clampRibbonHeight(value, height) {
+      if (value === null || value === undefined || value === "") return null;
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return null;
+      return Math.max(
+        RIBBON_MIN_HEIGHT,
+        Math.min(ribbonMaxHeight(height), Math.round(numeric)),
+      );
+    }
+
+    function readStoredRibbonHeight() {
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return null;
+        const raw = localStorage.getItem(RIBBON_HEIGHT_KEY);
+        if (raw === null || raw === "") return null;
+        const numeric = Number(raw);
+        return Number.isFinite(numeric) ? numeric : null;
+      } catch (_error) {
+        return null;
+      }
+    }
+
+    function storeRibbonHeight(value) {
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return;
+        if (value === null || value === undefined) {
+          localStorage.removeItem(RIBBON_HEIGHT_KEY);
+          return;
+        }
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return;
+        localStorage.setItem(RIBBON_HEIGHT_KEY, String(Math.round(numeric)));
+      } catch (_error) {
+        /* Storage may be unavailable (private mode): resizing still works. */
+      }
+    }
+
+    function readStoredFolder() {
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return "";
+        return String(localStorage.getItem(LAST_FOLDER_KEY) || "").trim();
+      } catch (_error) {
+        return "";
+      }
+    }
+
+    function storeFolder(path) {
+      const value = String(path || "").trim();
+      if (!value) return;
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return;
+        localStorage.setItem(LAST_FOLDER_KEY, value);
+      } catch (_error) {
+        /* Storage may be unavailable (private mode): browsing still works. */
+      }
+    }
+
+    /** The directory that contains `path` (the folder the chooser remembers). */
+    function folderPathOf(path) {
+      const trimmed = trimTrailingSeparator(path);
+      if (!trimmed) return "";
+      const index = Math.max(
+        trimmed.lastIndexOf("/"),
+        trimmed.lastIndexOf("\\"),
+      );
+      if (index < 0) return "";
+      if (index === 0) return trimmed.slice(0, 1);
+      const parent = trimmed.slice(0, index);
+      return /^[A-Za-z]:$/.test(parent) ? `${parent}\\` : parent;
+    }
+
     /** Keyboard shortcuts the editor implements, used in icon-only tooltips. */
     const SHORTCUTS = {
       undo: "Ctrl+Z",
@@ -245,43 +376,74 @@ window.__ModuleLoader__.load({
         "M4 4h4M16 4h4M4 20h4M16 20h4M4 8v4M4 14v4M20 8v4M20 14v4",
         "M9 9h6v6H9z",
       ],
-      pageBreak: ["M6 3h8l4 4v6M6 3v6M18 7h-4V3", "M4 14h16", "M6 18h12v3H6z"],
-      sectionBreak: ["M6 3h12v8H6zM6 15h12v6H6z", "M3 13h18"],
-      columnBreak: ["M4 4h6v16H4zM14 4h6v16h-6z", "M12 3v18"],
+      pageBreak: [
+        "M6 3h7l4.5 4.5V10.5H6z",
+        "M13 3v4.5h4.5",
+        "M6 13.5h12v3.5H6z",
+        "M3 12h3M9 12h3M15 12h3",
+      ],
+      sectionBreak: [
+        "M5 3.5h14v7H5z",
+        "M5 13.5h14v7H5z",
+        "M3 12h4M10 12h4M17 12h4",
+      ],
+      columnBreak: ["M4.5 4h6v16h-6z", "M13.5 4h6v16h-6z", "M12 3v18"],
       table: [
-        { rect: [3.5, 5, 17, 14, 1] },
-        "M3.5 10h17M3.5 14h17M9 5v14M15 5v14",
+        { rect: [3.5, 5, 17, 14, 1.5] },
+        "M3.5 9.8h17M3.5 14.5h17M9.6 5v14M15 5v14",
       ],
       image: [
         { rect: [3.5, 5, 17, 14, 1.5] },
-        { circle: [9, 10, 1.6] },
-        "m4.5 17 5-5 4 4 3-2.5 3.5 3.5",
+        { circle: [8.8, 9.8, 1.5] },
+        "m4.6 17.2 4.9-4.9 3.6 3.6 2.5-2.5 4 4",
       ],
       shape: [{ rect: [3, 8, 8, 8, 1] }, { circle: [17, 12, 4.5] }],
       link: [
-        "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.7 1.7",
-        "M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.7-1.7",
+        "M9.4 14.6 14.6 9.4",
+        "M11.1 6.7l1.6-1.6a4 4 0 0 1 5.7 5.7l-1.6 1.6",
+        "M12.9 17.3l-1.6 1.6a4 4 0 0 1-5.7-5.7l1.6-1.6",
       ],
-      header: ["M5 3h14v18H5z", "M5 9h14", "M8 6h5"],
-      footer: ["M5 3h14v18H5z", "M5 15h14", "M8 18h5"],
+      header: [
+        "M5 3.5h14v17H5z",
+        "M5 9h14",
+        "M8.5 6h3.5M8.5 12.5h7M8.5 16h4.5",
+      ],
+      footer: [
+        "M5 3.5h14v17H5z",
+        "M5 15h14",
+        "M8.5 6h7M8.5 9.5h4.5M8.5 18h3.5",
+      ],
       pageNumber: ["M6 3h9l4 4v14H6z", "M15 3v4h4", "M9 12h3M9 16h3M14 12l2 4"],
       toc: [
-        "M4 6h8M4 11h8M4 16h8",
-        "M15 6h5M15 11h5M15 16h5",
-        "M12 6h1M12 11h1M12 16h1",
+        "M4.5 6h5M4.5 11h5M4.5 16h5",
+        "M13.5 6h6M13.5 11h6M13.5 16h6",
+        "M11.2 6h.01M11.2 11h.01M11.2 16h.01",
       ],
-      footnote: ["M5 3h9l5 5v13H5z", "M14 3v5h5", "M9 14h4M11 12v4"],
+      footnote: [
+        "M5.5 3.5h8L18 8.5v12H5.5z",
+        "M13.5 3.5v5H18",
+        "M9 11.5h5.5",
+        "M11.8 15.8v3.4M10.3 16.7l3 1.7M13.3 16.7l-3 1.7",
+      ],
       endnote: ["M5 3h9l5 5v13H5z", "M14 3v5h5", "M9 12h6M9 16h4"],
-      equation: ["M5 6h6M5 18h6", "M13 8h6M13 16h6", "M8 6v12M16 8v8"],
+      equation: ["M17.5 4.5h-11l6 7.5-6 7.5h11"],
       symbol: ["M6 18V8l6 10 6-10v10", "M4 20h16"],
       pageColor: [{ rect: [4, 3, 16, 18, 1] }, "M4 15h16", "M8 7h8"],
       paragraphSpacing: ["M5 6h14M5 12h14M5 18h14", "M18 4v2M18 10v2M18 16v2"],
       fontSet: ["M4 19 10 5l6 14M6.5 14h7", "M17 19h4"],
       pageBorders: [{ rect: [4, 3, 16, 18, 0] }, { rect: [7, 6, 10, 12, 0] }],
-      margins: [{ rect: [4, 3, 16, 18, 0] }, "M8 3v18M16 3v18"],
-      orientation: [{ rect: [3, 6, 18, 12, 1] }, "M12 6v12"],
-      pageSize: [{ rect: [5, 3, 14, 18, 1] }, "M9 8h6M9 12h6M9 16h4"],
-      columns: ["M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z"],
+      margins: ["M4 3.5h16v17H4z", "M8 7.5h8v9H8z"],
+      orientation: [
+        "M4.5 6h9v12h-9z",
+        "M17.4 8.4a6 6 0 0 1 0 7.2",
+        "m18.6 7.2 2.6 1.2-1.2 2.6",
+      ],
+      pageSize: [
+        "M6 3.5h8.5L19 8v10H6z",
+        "M14.5 3.5V8H19",
+        "M4 20h16M4 18.5v3M20 18.5v3",
+      ],
+      columns: ["M4.5 4.5h15v15h-15z", "M9.5 4.5v15", "M14.5 4.5v15"],
       zoomIn: [{ circle: [10.5, 10.5, 5.5] }, "m15 15 5 5M8 10.5h5M10.5 8v5"],
       zoomOut: [{ circle: [10.5, 10.5, 5.5] }, "m15 15 5 5M8 10.5h5"],
       fitWidth: [
@@ -294,14 +456,25 @@ window.__ModuleLoader__.load({
         { circle: [12, 12, 2.5] },
       ],
       ruler: ["M3 8h18v6H3z", "M6 8v3M9 8v2M12 8v3M15 8v2M18 8v3"],
-      marks: ["M9 5h8M9 9h8M9 5v14M13 5v14", "M5 19h14"],
+      marks: [
+        "M8.5 20V4h3.4a3.6 3.6 0 0 1 0 7.2H8.5",
+        "M15.2 20V4",
+        "M6 20h12",
+      ],
       pageSeparators: ["M4 5h16M4 10h16", "M4 15h16", "M4 19h16"],
       sidebar: [{ rect: [3, 4, 18, 16, 1] }, "M9 4v16"],
       newDoc: ["M6 3h8l4 4v14H6z", "M14 3v4h4M9 13h6M12 10v6"],
-      open: ["M3 7h6l2 2h10v10H3z", "M3 7V5h6l2 2"],
+      open: [
+        "M3.5 8.6V6.4A1.4 1.4 0 0 1 4.9 5h3.9l1.9 2h7.9a1.4 1.4 0 0 1 1.4 1.4v.2",
+        "M3.5 8.6h17.4l-1.9 9.3a1.5 1.5 0 0 1-1.5 1.2H5.9a1.5 1.5 0 0 1-1.5-1.2z",
+      ],
       save: ["M4 4h13l3 3v13H4z", "M8 4v6h8V4M8 20v-6h8v6"],
-      saveAs: ["M4 4h13l3 3v9H4z", "M8 4v6h8V4", "M14 20h7M17.5 16.5v7"],
-      export: ["M12 15V4M8 8l4-4 4 4", "M5 14v6h14v-6"],
+      saveAs: [
+        "M4 4.5h10.8L18 7.7V17H4z",
+        "M8 4.5v5.2h6.2V4.5",
+        "m14.5 20.4 5.2-5.2 1.9 1.9-5.2 5.2-2.6.6z",
+      ],
+      export: ["M12 15V3.6", "m8.3 7.3 3.7-3.7 3.7 3.7", "M5 13.5v6.2h14v-6.2"],
       refresh: ["M20 12a8 8 0 1 1-2.3-5.7", "M20 4v4h-4"],
       trash: ["M4 7h16", "M9 7V4h6v3", "M6 7v13h12V7", "M10 11v6M14 11v6"],
       check: "m5 12 4 4 10-10",
@@ -336,15 +509,37 @@ window.__ModuleLoader__.load({
         { rect: [14, 14, 6, 6, 1] },
       ],
       star: ["m12 4 2.4 5 5.6.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.6-.8z"],
+      // Word's B/I/U/S and the sub/superscript marks are drawn, not typed: a
+      // real path set keeps one 24-grid/stroke language across the ribbon.
+      bold: [
+        "M7 4.5h5.2a3.7 3.7 0 0 1 0 7.4H7z",
+        "M7 11.9h5.9a3.9 3.9 0 0 1 0 7.8H7z",
+      ],
+      italic: ["M10 4.5h7", "M6.5 19.5h7", "M14.2 4.5 9.8 19.5"],
+      underline: ["M6.8 4.5v5.8a5.2 5.2 0 0 0 10.4 0V4.5", "M6 19.5h12"],
+      strike: [
+        "M4.8 12h14.4",
+        "M16.2 7.2A4.8 4.8 0 0 0 12 4.6c-2.5 0-4.3 1.3-4.3 3.2 0 1.5 1.1 2.4 3.1 3",
+        "M7.8 16.6a4.9 4.9 0 0 0 4.2 2.8c2.6 0 4.4-1.4 4.4-3.3 0-1.4-.9-2.3-2.6-2.9",
+      ],
+      subscript: [
+        "M4.5 4.5l7 8M11.5 4.5l-7 8",
+        "M13.6 18.4c0-1.3 1.3-2.2 2.8-2.2s2.8.9 2.8 2.2c0 1.8-2.9 2.6-5.3 5.4h5.3",
+      ],
+      superscript: [
+        "M4.5 4.5l7 8M11.5 4.5l-7 8",
+        "M13.6 6.6c0-1.3 1.3-2.2 2.8-2.2s2.8.9 2.8 2.2c0 1.8-2.9 2.6-5.3 5.4h5.3",
+      ],
     };
 
     /**
      * Line icons. They inherit `currentColor`, so a tool's hover/active/pressed
-     * colour reaches the strokes, and they default to the ribbon's 20px size
-     * with a 1.8 stroke: thick enough to read at 20px in both theme modes.
+     * colour reaches the strokes, and they default to the ribbon's 22px size
+     * with a 1.9 stroke: thick enough to read at 22px in both theme modes, and
+     * still inside the 32px tool button with room for the label.
      */
     function Icon(props) {
-      const size = typeof props.size === "number" ? props.size : 20;
+      const size = typeof props.size === "number" ? props.size : 22;
       const parts = ICONS[props.name] || ICONS.page;
       const list = Array.isArray(parts) ? parts : [parts];
       return h(
@@ -356,7 +551,7 @@ window.__ModuleLoader__.load({
           height: size,
           fill: "none",
           stroke: "currentColor",
-          strokeWidth: props.weight || 1.8,
+          strokeWidth: props.weight || 1.9,
           strokeLinecap: "round",
           strokeLinejoin: "round",
           "aria-hidden": "true",
@@ -381,21 +576,6 @@ window.__ModuleLoader__.load({
             r: entry.circle[2],
           });
         }),
-      );
-    }
-
-    /** Word's glyph buttons (B, I, U, S) are typographic, not pictograms. */
-    function Glyph(props) {
-      return h(
-        "span",
-        {
-          className: props.className
-            ? `dx-glyph ${props.className}`
-            : "dx-glyph",
-          style: props.style,
-          "aria-hidden": "true",
-        },
-        props.children,
       );
     }
 
@@ -506,21 +686,34 @@ window.__ModuleLoader__.load({
 .dx-ribbon-file[aria-selected=true]{color:var(--dx-accent);font-weight:600;border-bottom:2px solid var(--dx-accent);}
 
 /* ------------------------------------------------------------ ribbon */
-/* Constant-height ribbon: 1/16 of the viewport on a typical window, but never
-   shorter than 56px, because a 50px ribbon (805px viewport) clipped the group
-   captions, the labels mode and the style gallery. Groups stay on one row and
-   scroll horizontally instead of growing taller, so switching tabs never
-   shifts the document; overflow-y:hidden is safe because every child is
-   measured to fit (see test/ribbon.test.mjs and the Chromium probe). */
+/* Resizable ribbon. The default is 1/10 of the viewport, clamped to a band
+   that fits every tab's content; the user can drag it (or use the keyboard on
+   the separator) between 64px and half the viewport, and the chosen height is
+   stored in this browser. Groups stay on one row and scroll horizontally
+   instead of growing taller, so switching tabs never shifts the document, and
+   the bottom 6px strip is reserved for the drag handle so nothing hides under
+   it (see test/ribbon.test.mjs and the Chromium probe). */
+.dx-ribbon-dock{position:relative;display:flex;flex-direction:column;flex:0 0 auto;min-height:0;min-width:0;}
+.dx-ribbon-dock[hidden]{display:none;}
 .dx-ribbon{
-  display:flex;align-items:stretch;gap:0;flex:0 0 auto;
-  height:max(56px,calc(100vh / 16));min-height:56px;max-height:none;padding:0 6px;
+  display:flex;align-items:stretch;gap:0;flex:0 0 auto;min-width:0;
+  height:clamp(72px,calc(100vh / 10),240px);min-height:64px;max-height:50vh;padding:0 6px 6px;
   overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
   background:var(--dx-surface);border-bottom:1px solid var(--dx-border);
 }
 .dx-ribbon[hidden]{display:none;}
 .dx-ribbon::-webkit-scrollbar{height:6px;}
 .dx-ribbon::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
+/* The strip itself is the separator: 6px tall, aligned with the padding the
+   ribbon reserves, so it never covers a caption. */
+.dx-ribbon-handle{
+  position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;align-items:center;justify-content:center;
+  height:6px;margin:0;padding:0;border:0;background:transparent;color:var(--dx-muted);
+  cursor:row-resize;touch-action:none;
+}
+.dx-ribbon-handle:hover{background:var(--dx-hover);color:var(--dx-accent);}
+.dx-ribbon-handle:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-2px;}
+.dx-ribbon-grip{display:block;width:30px;height:1px;border-radius:1px;background:currentColor;box-shadow:0 -3px 0 currentColor,0 3px 0 currentColor;opacity:.55;}
 .dx-group{
   display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;
   height:100%;min-height:0;padding:2px 6px 1px;border-right:1px solid var(--dx-border);flex:0 0 auto;
@@ -533,15 +726,16 @@ window.__ModuleLoader__.load({
 .dx-group-items::-webkit-scrollbar{height:5px;}
 .dx-group-items::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
 .dx-group-items.dx-column{flex-direction:row;flex-wrap:nowrap;max-height:none;}
-/* A caption is a single 9px line with no line box to clip: line-height:1
-   makes the box exactly as tall as the glyphs at any ribbon height. */
+/* A caption is one 9px line: line-height:1.2 gives the glyph box (ascent plus
+   descender) room inside the line box, so p/g descenders are never clipped at
+   the 64px floor. */
 .dx-group-label{
-  margin:0;text-align:center;color:var(--dx-muted);font-size:9px;line-height:1;
+  margin:0;text-align:center;color:var(--dx-muted);font-size:9px;line-height:1.2;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto;
 }
 .dx-tool{
   display:inline-flex;align-items:center;justify-content:center;gap:2px;
-  width:30px;height:30px;min-width:30px;padding:1px;border:1px solid transparent;border-radius:var(--dx-radius);
+  width:32px;height:32px;min-width:32px;padding:1px;border:1px solid transparent;border-radius:var(--dx-radius);
   background:transparent;color:var(--dx-text);cursor:pointer;font-size:10.5px;line-height:1.1;flex:0 0 auto;
 }
 .dx-tool .dx-tool-label{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -551,25 +745,19 @@ window.__ModuleLoader__.load({
 /* Disabled stays readable: the icon is dimmed, never washed out. */
 .dx-tool[disabled]{opacity:.55;cursor:not-allowed;}
 .dx-tool:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-1px;}
-.dx-tool.dx-tool-small{height:30px;min-width:30px;font-size:10.5px;}
-.dx-tool.dx-tool-tiny{height:30px;min-width:30px;padding:1px;}
-/* A colour tool stacks its swatch under the 20px icon inside the 30px button. */
+.dx-tool.dx-tool-small{height:32px;min-width:32px;font-size:10.5px;}
+.dx-tool.dx-tool-tiny{height:32px;min-width:32px;padding:1px;}
+/* A colour tool stacks its swatch under the 22px icon inside the 32px button. */
 .dx-tool.dx-tool-swatch{flex-direction:column;gap:0;}
 /* View → Show labels restores the previous text labels inside the same height. */
 .dx-show-labels .dx-tool{
-  width:auto;min-width:44px;height:calc(100% - 2px);flex-direction:column;gap:0;padding:1px 4px;
+  width:auto;min-width:34px;height:calc(100% - 2px);flex-direction:column;gap:0;padding:1px 4px;
 }
-.dx-show-labels .dx-tool .dx-tool-label{display:block;font-size:9.5px;line-height:1.1;}
+.dx-show-labels .dx-tool .dx-tool-label{display:block;font-size:9.5px;line-height:1.2;}
 .dx-show-labels .dx-tool.dx-tool-small,
-.dx-show-labels .dx-tool.dx-tool-tiny{height:calc(100% - 2px);min-width:32px;flex-direction:row;gap:3px;font-size:10.5px;}
+.dx-show-labels .dx-tool.dx-tool-tiny{height:calc(100% - 2px);min-width:34px;flex-direction:row;gap:3px;font-size:10.5px;}
 .dx-show-labels .dx-group{height:100%;min-height:0;}
 .dx-icon{display:block;flex:0 0 auto;}
-.dx-glyph{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;font-size:16px;line-height:1;font-weight:700;font-family:"Segoe UI",Georgia,serif;}
-.dx-glyph.dx-glyph-italic{font-style:italic;font-weight:600;}
-.dx-glyph.dx-glyph-underline{text-decoration:underline;}
-.dx-glyph.dx-glyph-strike{text-decoration:line-through;}
-.dx-glyph.dx-glyph-sub{font-size:13px;}
-.dx-glyph.dx-glyph-sup{font-size:13px;}
 .dx-color-bar{display:block;width:18px;height:3px;margin-top:1px;border-radius:1px;flex:0 0 auto;}
 .dx-stepper{display:inline-flex;align-items:stretch;height:26px;max-height:100%;border:1px solid var(--dx-border);border-radius:var(--dx-radius);overflow:hidden;background:var(--dx-surface);}
 .dx-stepper button{border:0;background:transparent;color:var(--dx-text);width:20px;cursor:pointer;padding:0;}
@@ -783,10 +971,12 @@ window.__ModuleLoader__.load({
 .dx-file-compact{display:flex;align-items:center;gap:4px;height:100%;width:100%;overflow-x:auto;overflow-y:hidden;padding:0 4px;scrollbar-width:thin;}
 .dx-file-compact::-webkit-scrollbar{height:6px;}
 .dx-file-compact::-webkit-scrollbar-thumb{background:var(--dx-border-strong);border-radius:3px;}
-.dx-file-compact .dx-tool{width:30px;height:30px;min-width:30px;}
-/* The rich File backstage is an overlay, so it never changes the ribbon height. */
+.dx-file-compact .dx-tool{width:32px;height:32px;min-width:32px;}
+/* The rich File backstage is an overlay, so it never changes the ribbon height.
+   Its top is measured from the ribbon's real bottom by a ResizeObserver and
+   published as --dx-ribbon-bottom, so it follows a dragged ribbon exactly. */
 .dx-backstage{
-  position:absolute;left:0;right:0;top:72px;bottom:0;z-index:40;display:flex;flex-direction:column;
+  position:absolute;left:0;right:0;top:var(--dx-ribbon-bottom,72px);bottom:0;z-index:40;display:flex;flex-direction:column;
   background:var(--dx-surface);border-top:1px solid var(--dx-border);overflow:auto;
   box-shadow:0 10px 30px rgba(0,0,0,.18);
 }
@@ -2574,6 +2764,7 @@ window.__ModuleLoader__.load({
         canRedo: true,
         dialogReturnFocus: null,
         showLabels: readStoredLabels(),
+        ribbonHeight: readStoredRibbonHeight(),
         advancedOpen: false,
         advancedPath: "",
         browseRoots: [],
@@ -2710,6 +2901,8 @@ window.__ModuleLoader__.load({
       if (opts.selection) bootstrap.selection = opts.selection;
       state.tab = opts.tab || "home";
       state.ribbonCollapsed = opts.ribbonCollapsed === true;
+      if (typeof opts.ribbonHeight === "number")
+        state.ribbonHeight = opts.ribbonHeight;
       state.zoom = typeof opts.zoom === "number" ? opts.zoom : 1;
       state.readOnlyOverride =
         typeof opts.readOnly === "boolean" ? opts.readOnly : null;
@@ -2895,6 +3088,15 @@ window.__ModuleLoader__.load({
         offline: state.offline,
         tab: state.tab,
         ribbonCollapsed: state.ribbonCollapsed,
+        // A stored (or dragged) height wins; otherwise the stylesheet's
+        // clamp(72px, 10vh, 240px) default applies and ribbonHeight stays null.
+        ribbonHeight:
+          typeof state.ribbonHeight === "number" ? state.ribbonHeight : null,
+        ribbonHeightValue:
+          typeof state.ribbonHeight === "number"
+            ? clampRibbonHeight(state.ribbonHeight, viewportHeight())
+            : defaultRibbonHeight(viewportHeight()),
+        ribbonMaxHeight: ribbonMaxHeight(viewportHeight()),
         zoom: state.zoom,
         fitWidth: state.fitWidth,
         showRuler: state.showRuler,
@@ -3219,36 +3421,9 @@ window.__ModuleLoader__.load({
         .filter(Boolean)
         .join(" ");
       const children = [];
-      if (item.glyph) {
-        children.push(
-          h(
-            Glyph,
-            {
-              key: "glyph",
-              className:
-                item.glyph === "I"
-                  ? "dx-glyph-italic"
-                  : item.glyph === "U"
-                    ? "dx-glyph-underline"
-                    : item.glyph === "S"
-                      ? "dx-glyph-strike"
-                      : item.glyph === "x₂"
-                        ? "dx-glyph-sub"
-                        : item.glyph === "x²"
-                          ? "dx-glyph-sup"
-                          : "",
-              style: item.glyphColor
-                ? { color: item.glyphColor(ctx) }
-                : undefined,
-            },
-            item.glyph,
-          ),
-        );
-      } else {
-        children.push(
-          h(Icon, { key: "icon", name: item.icon || "page", size: 20 }),
-        );
-      }
+      children.push(
+        h(Icon, { key: "icon", name: item.icon || "page", size: 22 }),
+      );
       if (item.swatch)
         children.push(
           h("span", {
@@ -3554,42 +3729,36 @@ window.__ModuleLoader__.load({
               needs: "caret",
               value: () => formatting.fontSize,
             },
-            tool("bold", null, "Bold", {
-              glyph: "B",
+            tool("bold", "bold", "Bold", {
               pressed: () => formatting.bold,
               editing: true,
               needs: "caret",
               title:
                 "Bold (Ctrl+B): applies to the selection, or to the current paragraph when the caret is collapsed",
             }),
-            tool("italic", null, "Italic", {
-              glyph: "I",
+            tool("italic", "italic", "Italic", {
               pressed: () => formatting.italic,
               editing: true,
               needs: "caret",
               title: "Italic (Ctrl+I)",
             }),
-            tool("underline", null, "Underline", {
-              glyph: "U",
+            tool("underline", "underline", "Underline", {
               pressed: () => formatting.underline,
               editing: true,
               needs: "caret",
               title: "Underline (Ctrl+U)",
             }),
-            tool("strike", null, "Strikethrough", {
-              glyph: "S",
+            tool("strike", "strike", "Strikethrough", {
               pressed: () => formatting.strike,
               editing: true,
               needs: "caret",
             }),
-            tool("subscript", null, "Subscript", {
-              glyph: "x₂",
+            tool("subscript", "subscript", "Subscript", {
               pressed: () => formatting.vertAlign === "subscript",
               editing: true,
               needs: "caret",
             }),
-            tool("superscript", null, "Superscript", {
-              glyph: "x²",
+            tool("superscript", "superscript", "Superscript", {
               pressed: () => formatting.vertAlign === "superscript",
               editing: true,
               needs: "caret",
@@ -4278,30 +4447,182 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * The ribbon's drag handle: a 6px strip along the bottom edge of the dock.
+     * It is a real separator widget: pointer drags resize live, the arrow keys
+     * move by 16px, Home/End jump to the bounds, and Enter (or a double click)
+     * returns to the 1/10-of-viewport default.
+     */
+    function RibbonResizer(props) {
+      const api = props.api;
+      const dragRef = React.useRef(null);
+      const min = RIBBON_MIN_HEIGHT;
+      const max =
+        typeof props.max === "number" ? props.max : ribbonMaxHeight(0);
+      const value =
+        typeof props.height === "number"
+          ? props.height
+          : defaultRibbonHeight(viewportHeight());
+      const currentHeight = () => {
+        const node = api.ribbonRef && api.ribbonRef.current;
+        if (node && typeof node.getBoundingClientRect === "function") {
+          const height = node.getBoundingClientRect().height;
+          if (height > 0) return height;
+        }
+        return typeof props.height === "number"
+          ? props.height
+          : defaultRibbonHeight(viewportHeight());
+      };
+      const apply = (value, persist) => {
+        if (typeof api.onRibbonHeight === "function")
+          api.onRibbonHeight(value, persist === true);
+      };
+      const onPointerDown = (event) => {
+        if (typeof event.button === "number" && event.button !== 0) return;
+        event.preventDefault();
+        const startHeight = currentHeight();
+        dragRef.current = {
+          pointerId: event.pointerId,
+          startY: event.clientY,
+          startHeight,
+          value: startHeight,
+        };
+        const node = event.currentTarget;
+        if (
+          node &&
+          typeof node.setPointerCapture === "function" &&
+          typeof event.pointerId === "number"
+        ) {
+          try {
+            node.setPointerCapture(event.pointerId);
+          } catch (_error) {
+            /* A synthetic pointer may not be capturable; dragging still works. */
+          }
+        }
+      };
+      const onPointerMove = (event) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        event.preventDefault();
+        const next = drag.startHeight + (event.clientY - drag.startY);
+        drag.value = clampRibbonHeight(next, viewportHeight());
+        apply(drag.value, false);
+      };
+      const finishDrag = (event) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        dragRef.current = null;
+        const node = event.currentTarget;
+        if (
+          node &&
+          typeof node.releasePointerCapture === "function" &&
+          typeof drag.pointerId === "number"
+        ) {
+          try {
+            node.releasePointerCapture(drag.pointerId);
+          } catch (_error) {
+            /* Already released, or never captured. */
+          }
+        }
+        apply(drag.value, true);
+      };
+      const onKeyDown = (event) => {
+        const value = currentHeight();
+        let next = null;
+        let reset = false;
+        if (event.key === "ArrowUp") next = value + RIBBON_KEYBOARD_STEP;
+        else if (event.key === "ArrowDown") next = value - RIBBON_KEYBOARD_STEP;
+        else if (event.key === "Home") next = min;
+        else if (event.key === "End") next = max;
+        else if (
+          event.key === "Enter" ||
+          event.key === " " ||
+          event.key === "Spacebar"
+        )
+          reset = true;
+        else return;
+        event.preventDefault();
+        event.stopPropagation();
+        apply(reset ? null : clampRibbonHeight(next, viewportHeight()), true);
+      };
+      return h(
+        "div",
+        {
+          className: "dx-ribbon-handle",
+          role: "separator",
+          "aria-orientation": "horizontal",
+          "aria-label": "Ribbon height",
+          "aria-valuenow": Math.round(value),
+          "aria-valuemin": min,
+          "aria-valuemax": max,
+          "aria-valuetext": `${Math.round(value)} pixels`,
+          title: "Drag to resize the ribbon; double-click to reset",
+          tabIndex: 0,
+          onPointerDown,
+          onPointerMove,
+          onPointerUp: finishDrag,
+          onPointerCancel: finishDrag,
+          onDoubleClick: () => apply(null, true),
+          onKeyDown,
+        },
+        h("span", { className: "dx-ribbon-grip", "aria-hidden": "true" }),
+      );
+    }
+
+    /** Inline height for the ribbon: nothing when the CSS default applies. */
+    function ribbonStyle(ctx) {
+      return typeof ctx.ribbonHeight === "number"
+        ? { height: `${ctx.ribbonHeight}px` }
+        : undefined;
+    }
+
+    function RibbonDock(props) {
+      return h(
+        "div",
+        { className: "dx-ribbon-dock", hidden: props.hidden === true },
+        props.children,
+      );
+    }
+
     function Ribbon(props) {
       const ctx = props;
       const api = props.api;
       if (props.ribbonCollapsed)
-        return h("div", {
-          className: "dx-ribbon",
-          id: "dx-ribbon",
-          role: "tabpanel",
-          "aria-label": `${props.tab} ribbon (collapsed)`,
-          hidden: true,
-        });
+        return h(
+          RibbonDock,
+          { hidden: true },
+          h("div", {
+            className: "dx-ribbon",
+            id: "dx-ribbon",
+            role: "tabpanel",
+            "aria-label": `${props.tab} ribbon (collapsed)`,
+            hidden: true,
+          }),
+        );
       if (props.tab === "file") return h(FileRibbon, { ctx, api });
       const groups = ribbonGroups(props.tab, ctx);
       return h(
-        "div",
-        {
-          className: "dx-ribbon",
-          id: "dx-ribbon",
-          role: "tabpanel",
-          "aria-label": `${props.tab} ribbon`,
-        },
-        groups.map((group) =>
-          h(RibbonGroup, { key: group.id, group, ctx, api }),
+        RibbonDock,
+        null,
+        h(
+          "div",
+          {
+            className: "dx-ribbon",
+            id: "dx-ribbon",
+            role: "tabpanel",
+            "aria-label": `${props.tab} ribbon`,
+            style: ribbonStyle(props),
+            ref: api.ribbonRef,
+          },
+          groups.map((group) =>
+            h(RibbonGroup, { key: group.id, group, ctx, api }),
+          ),
         ),
+        h(RibbonResizer, {
+          api,
+          height: props.ribbonHeightValue,
+          max: props.ribbonMaxHeight,
+        }),
       );
     }
 
@@ -4327,7 +4648,7 @@ window.__ModuleLoader__.load({
             disabled: Boolean(reason),
             onClick: () => api.onAction(run),
           },
-          h(Icon, { name: icon, size: 20 }),
+          h(Icon, { name: icon, size: 22 }),
           label,
         );
       };
@@ -4342,10 +4663,15 @@ window.__ModuleLoader__.load({
           action("newDocument", "New document…", "newDoc", {
             editing: true,
           }),
-          action("chooseFolder", "Choose folder…", "folder", {
+          // The in-panel chooser is the primary "choose file" path: it needs no
+          // OS file dialog and lists folders and importable documents.
+          action("openFileChooser", "Open file…", "open", {
             remote: true,
           }),
-          action("openDocument", "Open document…", "device", {
+          action("openDocument", "Open from this device…", "device", {
+            remote: true,
+          }),
+          action("chooseFolder", "Choose folder…", "folder", {
             remote: true,
           }),
           // A real (hidden) file input: the button above opens the native
@@ -4449,9 +4775,9 @@ window.__ModuleLoader__.load({
     function FileRibbon(props) {
       const ctx = props.ctx;
       const api = props.api;
-      // The ribbon keeps its constant 1/16-viewport height; the rich File
-      // "backstage" opens below it as an overlay so it cannot change that
-      // height. Escape or Close returns to the document.
+      // The ribbon keeps its (default or user-chosen) height; the rich File
+      // "backstage" opens directly below it as an overlay so it cannot change
+      // that height. Escape or Close returns to the document.
       const [backstage, setBackstage] = React.useState(true);
       const closeBackstage = React.useCallback(() => {
         setBackstage(false);
@@ -4513,52 +4839,70 @@ window.__ModuleLoader__.load({
             disabled: Boolean(reason),
             onClick: () => api.onAction(run),
           },
-          h(Icon, { name: icon, size: 20 }),
+          h(Icon, { name: icon, size: 22 }),
         );
       };
       return h(
         React.Fragment,
         null,
         h(
-          "div",
-          {
-            className: "dx-ribbon",
-            id: "dx-ribbon",
-            role: "tabpanel",
-            "aria-label": "file ribbon",
-          },
+          RibbonDock,
+          null,
           h(
             "div",
-            { className: "dx-file-compact" },
-            compact("newDocument", "New document…", "newDoc", {
-              editing: true,
-            }),
-            compact("openDocument", "Open document…", "device", {
-              remote: true,
-            }),
-            compact("chooseFolder", "Choose folder…", "folder", {
-              remote: true,
-            }),
-            compact("save", "Save", "save", { editing: true, remote: true }),
-            compact("saveAs", "Save as…", "saveAs", {
-              editing: true,
-              remote: true,
-            }),
-            compact("export", "Export PDF", "export", { remote: true }),
+            {
+              className: "dx-ribbon",
+              id: "dx-ribbon",
+              role: "tabpanel",
+              "aria-label": "file ribbon",
+              style: ribbonStyle(ctx),
+              ref: api.ribbonRef,
+            },
             h(
-              "button",
-              {
-                key: "more",
-                type: "button",
-                className: "dx-tool dx-tool-small",
-                title: backstage ? "Hide File details" : "More File commands…",
-                "aria-label": "More File commands",
-                "aria-expanded": backstage,
-                onClick: () => setBackstage((value) => !value),
-              },
-              h(Icon, { name: "chevronDown", size: 20 }),
+              "div",
+              { className: "dx-file-compact" },
+              compact("newDocument", "New document…", "newDoc", {
+                editing: true,
+              }),
+              // Primary "choose file" entry point: the in-panel chooser, no OS
+              // dialog involved.
+              compact("openFileChooser", "Open file…", "open", {
+                remote: true,
+              }),
+              compact("openDocument", "Open from this device…", "device", {
+                remote: true,
+              }),
+              compact("chooseFolder", "Choose folder…", "folder", {
+                remote: true,
+              }),
+              compact("save", "Save", "save", { editing: true, remote: true }),
+              compact("saveAs", "Save as…", "saveAs", {
+                editing: true,
+                remote: true,
+              }),
+              compact("export", "Export PDF", "export", { remote: true }),
+              h(
+                "button",
+                {
+                  key: "more",
+                  type: "button",
+                  className: "dx-tool dx-tool-small",
+                  title: backstage
+                    ? "Hide File details"
+                    : "More File commands…",
+                  "aria-label": "More File commands",
+                  "aria-expanded": backstage,
+                  onClick: () => setBackstage((value) => !value),
+                },
+                h(Icon, { name: "chevronDown", size: 22 }),
+              ),
             ),
           ),
+          h(RibbonResizer, {
+            api,
+            height: ctx.ribbonHeightValue,
+            max: ctx.ribbonMaxHeight,
+          }),
         ),
         backstage
           ? h(
@@ -4582,7 +4926,7 @@ window.__ModuleLoader__.load({
                     "aria-label": "Close File",
                     onClick: closeBackstage,
                   },
-                  h(Icon, { name: "close", size: 20 }),
+                  h(Icon, { name: "close", size: 22 }),
                 ),
               ),
               h(
@@ -4613,7 +4957,7 @@ window.__ModuleLoader__.load({
                           disabled: !ctx.bootstrap,
                           onClick: () => api.onAction("export", format),
                         },
-                        h(Icon, { name: "export", size: 20 }),
+                        h(Icon, { name: "export", size: 22 }),
                         String(format).toUpperCase(),
                       ),
                     ),
@@ -5637,6 +5981,9 @@ window.__ModuleLoader__.load({
     function BrowseDialog(props) {
       const api = props.api;
       const dialog = props.dialog || {};
+      // The native directory picker is optional: the Host may not expose
+      // `uiWorkspace.pickDirectory`, and the chooser still works without it.
+      const canPickDirectory = props.canPickDirectory !== false;
       const entries = dialog.entries || [];
       const roots = dialog.roots || [];
       const crumbs = breadcrumbSegments(dialog.path || "");
@@ -5794,6 +6141,21 @@ window.__ModuleLoader__.load({
               h(Icon, { name: "folderPlus", size: 13 }),
               "New folder",
             ),
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn",
+                title: canPickDirectory
+                  ? "Use the system folder picker, then list that folder here"
+                  : "This Host exposes no native folder picker; browse with Up and the folders above instead.",
+                "aria-label": "Choose folder with the system dialog",
+                disabled: !canPickDirectory,
+                onClick: () => api.onAction("chooseFolder"),
+              },
+              h(Icon, { name: "folder", size: 13 }),
+              "Choose folder…",
+            ),
           ),
           typeof newFolder === "string"
             ? h(
@@ -5878,7 +6240,11 @@ window.__ModuleLoader__.load({
             }),
           });
         case "browse":
-          return h(BrowseDialog, { api, dialog });
+          return h(BrowseDialog, {
+            api,
+            dialog,
+            canPickDirectory: props.canPickDirectory !== false,
+          });
         case "saveAs":
           return h(DialogShell, {
             api,
@@ -6215,7 +6581,7 @@ window.__ModuleLoader__.load({
           h(
             "p",
             { className: "dx-file-meta" },
-            "Create a document, or open one by path from the File tab. The document list lives in the rail on the left.",
+            "Create a document, or open one with the in-panel file chooser. The document list lives in the rail on the left.",
           ),
           h(
             "div",
@@ -6237,6 +6603,17 @@ window.__ModuleLoader__.load({
                 onClick: () => api.onAction("newDocument"),
               },
               "New document",
+            ),
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn",
+                title:
+                  "Browse folders and open a document without the OS file dialog (Ctrl+O)",
+                onClick: () => api.onAction("openFileChooser"),
+              },
+              "Open file…",
             ),
             h(
               "button",
@@ -6421,9 +6798,11 @@ window.__ModuleLoader__.load({
         onPaste: noop,
         onBlur: noop,
         onRootKeyDown: noop,
+        onRibbonHeight: noop,
         rootRef: null,
         surfaceRef: null,
         fileInputRef: null,
+        ribbonRef: null,
       };
     }
 
@@ -6440,6 +6819,7 @@ window.__ModuleLoader__.load({
       const rootRef = React.useRef(null);
       const surfaceRef = React.useRef(null);
       const fileInputRef = React.useRef(null);
+      const ribbonRef = React.useRef(null);
       const pendingTextRef = React.useRef(new Map());
       const hostTextRef = React.useRef(new Map());
       const flushTimerRef = React.useRef(null);
@@ -6468,6 +6848,22 @@ window.__ModuleLoader__.load({
           current.workspaceReadOnly,
         );
       }, []);
+
+      /**
+       * Resize the ribbon. `persist` also writes the height to `localStorage`;
+       * a `null` value removes the key, which restores the 1/10 default.
+       */
+      const onRibbonHeight = React.useCallback(
+        (value, persist) => {
+          const next =
+            value === null || value === undefined
+              ? null
+              : clampRibbonHeight(value, viewportHeight());
+          patch({ ribbonHeight: next });
+          if (persist === true) storeRibbonHeight(next);
+        },
+        [patch],
+      );
 
       const reportError = React.useCallback(
         (cause) => {
@@ -7293,12 +7689,33 @@ window.__ModuleLoader__.load({
             typeof target.closest === "function" &&
             Boolean(target.closest("[data-block-id]"));
           const mod = event.ctrlKey || event.metaKey;
+          // Ctrl+O / Cmd+O opens the in-panel chooser (the panel's own "Open
+          // file…"), never the OS dialog. A text field or the contenteditable
+          // document owns the keystroke, and an open dialog owns everything.
+          const typing =
+            target &&
+            typeof target.closest === "function" &&
+            Boolean(
+              target.closest(
+                "input:not([type=file]), textarea, [contenteditable=true], [contenteditable='']",
+              ),
+            );
           if (inDialog) {
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
               closeDialogRef.current();
             }
+            return;
+          }
+          if (
+            mod &&
+            (event.key === "o" || event.key === "O") &&
+            !typing &&
+            typeof openFileChooserRef.current === "function"
+          ) {
+            event.preventDefault();
+            void openFileChooserRef.current();
             return;
           }
           if (mod && (event.key === "s" || event.key === "S")) {
@@ -7748,6 +8165,9 @@ window.__ModuleLoader__.load({
       closeDialogRef.current = closeDialog;
       const saveDocumentRef = React.useRef(saveDocument);
       saveDocumentRef.current = saveDocument;
+      // The root keydown handler is declared before the chooser exists, so
+      // Ctrl+O reaches it through a ref assigned next to its definition.
+      const openFileChooserRef = React.useRef(null);
 
       const onImagePicked = React.useCallback(
         (event) => {
@@ -7859,6 +8279,16 @@ window.__ModuleLoader__.load({
 
       const openBrowseDialog = React.useCallback(
         async (targetPath) => {
+          // Remember where focus came from so Escape can restore it. The
+          // chooser opens without going through `openDialog`, so it records
+          // its own return target (Ctrl+O from the tab row, a rail button, …).
+          if (
+            !dialogReturnFocusRef.current &&
+            typeof window !== "undefined" &&
+            window.document &&
+            window.document.activeElement
+          )
+            dialogReturnFocusRef.current = window.document.activeElement;
           patch({
             dialog: {
               kind: "browse",
@@ -7893,6 +8323,9 @@ window.__ModuleLoader__.load({
 
       const finishOpenedDocument = React.useCallback(
         async (result) => {
+          // A real open ends the chooser; its saved focus target must not leak
+          // into the next chooser (the button may have been unmounted).
+          dialogReturnFocusRef.current = null;
           // Opening from the File backstage must reveal the document again.
           patch({
             dialog: null,
@@ -7927,6 +8360,27 @@ window.__ModuleLoader__.load({
         [loadDocument, patch, refreshList],
       );
 
+      /**
+       * Open the in-panel file chooser (`GET /browse`) at the folder the user
+       * last opened a document from, else at the panel workspace (the Host
+       * falls back to its own home root when the path is empty). This is the
+       * "choose file" path that never depends on the OS file dialog.
+       */
+      const openFileChooser = React.useCallback(async () => {
+        const current = stateRef.current;
+        const remembered = readStoredFolder();
+        const workspace = (current && current.workspace) || "";
+        const target = remembered || workspace;
+        if (!remembered && !workspace) {
+          patch({
+            notice:
+              "No remembered folder and no workspace yet; the chooser opens at the Host's own root.",
+          });
+        }
+        await openBrowseDialog(target);
+      }, [openBrowseDialog, patch]);
+      openFileChooserRef.current = openFileChooser;
+
       const chooseFolder = React.useCallback(async () => {
         let result;
         try {
@@ -7951,6 +8405,7 @@ window.__ModuleLoader__.load({
           notice: result.chip.warning || "",
           error: null,
         });
+        storeFolder(result.path);
         await refreshList();
         await openBrowseDialog(result.path);
       }, [openBrowseDialog, patch, refreshList, reportError]);
@@ -7977,6 +8432,11 @@ window.__ModuleLoader__.load({
 
       const openFromBrowse = React.useCallback(
         async (path) => {
+          // The folder that is actually opened is remembered for the next
+          // "Open file…"/Ctrl+O, so the chooser reopens where the user was.
+          const dialog = stateRef.current.dialog || {};
+          const folder =
+            (dialog.kind === "browse" && dialog.path) || folderPathOf(path);
           patch((previous) => ({
             saving: true,
             dialog:
@@ -7992,6 +8452,7 @@ window.__ModuleLoader__.load({
               uiWorkspace: workspaceService(),
               useBoundServices: false,
             });
+            if (folder) storeFolder(folder);
             await finishOpenedDocument(result);
           } catch (cause) {
             patch((previous) => ({
@@ -8020,6 +8481,7 @@ window.__ModuleLoader__.load({
         if (!target) return;
         try {
           await prepareWorkspaceAt(target, false);
+          storeFolder(target);
           patch({ dialog: null });
         } catch (cause) {
           patch((previous) => ({
@@ -8871,18 +9333,29 @@ window.__ModuleLoader__.load({
             case "chooseFolder":
               await chooseFolder();
               return;
+            case "openFileChooser":
+              await openFileChooser();
+              return;
             case "openDocument":
+              // Secondary path: the browser's own file input. When it cannot be
+              // clicked (sandboxed/headless/insecure contexts) fall back to the
+              // in-panel chooser instead of dead-ending on a notice.
               if (
                 fileInputRef.current &&
                 typeof fileInputRef.current.click === "function"
-              )
-                fileInputRef.current.click();
-              else
-                patch({
-                  advancedOpen: true,
-                  notice:
-                    "This Host cannot open the native file dialog; use “Advanced: path” instead.",
-                });
+              ) {
+                try {
+                  fileInputRef.current.click();
+                  return;
+                } catch (_cause) {
+                  /* fall through to the chooser */
+                }
+              }
+              patch({
+                notice:
+                  "This browser cannot open its own file dialog, so the in-panel chooser opened instead.",
+              });
+              await openFileChooser();
               return;
             case "toggleAdvanced":
               onToggleAdvanced(!current.advancedOpen);
@@ -9166,6 +9639,7 @@ window.__ModuleLoader__.load({
           openCurrentFolder,
           openDialog,
           openDocumentByPath,
+          openFileChooser,
           openFromBrowse,
           pasteSelection,
           patch,
@@ -9304,9 +9778,11 @@ window.__ModuleLoader__.load({
             void flushPending();
           },
           onRootKeyDown,
+          onRibbonHeight,
           rootRef,
           surfaceRef,
           fileInputRef,
+          ribbonRef,
         }),
         [
           closeDialog,
@@ -9319,6 +9795,7 @@ window.__ModuleLoader__.load({
           onImagePicked,
           onOpenDocument,
           onOpenUrl,
+          onRibbonHeight,
           onTab,
           onTitleChange,
           onTitleCommit,
@@ -9363,6 +9840,55 @@ window.__ModuleLoader__.load({
           if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
         };
       }, []);
+
+      /**
+       * Keep the File backstage glued to the ribbon's real bottom edge. The
+       * offset is published as a CSS variable on the panel root, so the
+       * absolutely-positioned overlay follows every drag without re-rendering
+       * the document, and the hard-coded top:72px is gone.
+       */
+      React.useEffect(() => {
+        const root = rootRef.current;
+        const ribbon = ribbonRef.current;
+        if (!root || !ribbon) return undefined;
+        const measure = () => {
+          const ribbonRect = ribbon.getBoundingClientRect();
+          const rootRect = root.getBoundingClientRect();
+          if (!ribbonRect.height && ribbon.hidden) {
+            // A collapsed ribbon has no bottom edge; the overlay is not shown.
+            root.style.removeProperty("--dx-ribbon-bottom");
+            return;
+          }
+          const offset = Math.max(0, ribbonRect.bottom - rootRect.top);
+          root.style.setProperty(
+            "--dx-ribbon-bottom",
+            `${Math.round(offset * 100) / 100}px`,
+          );
+        };
+        measure();
+        let observer = null;
+        if (typeof ResizeObserver !== "undefined") {
+          observer = new ResizeObserver(measure);
+          observer.observe(ribbon);
+        }
+        if (typeof window !== "undefined" && window.addEventListener)
+          window.addEventListener("resize", measure);
+        return () => {
+          if (observer) observer.disconnect();
+          if (typeof window !== "undefined" && window.removeEventListener)
+            window.removeEventListener("resize", measure);
+        };
+      }, [state.tab, state.ribbonCollapsed, state.ribbonHeight]);
+
+      /** Clamp a height restored from `localStorage` to this viewport. */
+      React.useEffect(() => {
+        const stored = stateRef.current.ribbonHeight;
+        if (typeof stored !== "number") return;
+        const clamped = clampRibbonHeight(stored, viewportHeight());
+        if (clamped === null || clamped === stored) return;
+        patch({ ribbonHeight: clamped });
+        storeRibbonHeight(clamped);
+      }, [patch]);
 
       return h(DocumentsPanelView, buildViewProps(state, api));
     }
@@ -9430,6 +9956,24 @@ window.__ModuleLoader__.load({
       REQUEST_HEADER: HEADER,
       API_PREFIX: API,
       LABELS_KEY,
+      RIBBON_HEIGHT_KEY,
+      LAST_FOLDER_KEY,
+      RIBBON_MIN_HEIGHT,
+      RIBBON_DEFAULT_MIN,
+      RIBBON_DEFAULT_MAX,
+      RIBBON_KEYBOARD_STEP,
+      viewportHeight,
+      ribbonMaxHeight,
+      defaultRibbonHeight,
+      clampRibbonHeight,
+      readStoredRibbonHeight,
+      storeRibbonHeight,
+      readStoredFolder,
+      storeFolder,
+      folderPathOf,
+      Icon,
+      RibbonResizer,
+      ribbonStyle,
       SHORTCUTS,
       DOCUMENT_ACCEPT,
       readStoredLabels,
@@ -9459,6 +10003,7 @@ window.__ModuleLoader__.load({
       SessionChip,
       BrowseDialog,
       FileRibbon,
+      FileActions,
       RibbonTool,
       ribbonToolTitle,
     };

@@ -1,6 +1,8 @@
 /**
- * The ribbon must keep one constant height on every tab: 1/16 of the viewport.
- * Groups stay on a single row and scroll horizontally instead of wrapping, so
+ * The ribbon is 1/10 of the viewport by default and user-resizable: dragging
+ * the bottom separator (or the keyboard) picks any height between 64px and
+ * half the viewport, and the choice is remembered for this browser. Groups
+ * stay on a single row and scroll horizontally instead of wrapping, so
  * switching from File to Home never moves the document.
  */
 import assert from "node:assert/strict";
@@ -13,6 +15,7 @@ import test from "node:test";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const clientPath = path.join(here, "..", "client.js");
 const fixturePath = path.join(here, "fixture.json");
+const source = readFileSync(clientPath, "utf8");
 
 function loadReact() {
   for (const root of [
@@ -41,7 +44,7 @@ globalThis.window = {
     },
   },
 };
-new Function("window", readFileSync(clientPath, "utf8"))(globalThis.window);
+new Function("window", source)(globalThis.window);
 assert.ok(captured, "the loader captures the module definition");
 const bundled = captured.factory((id) => {
   if (id === "react") return React;
@@ -67,30 +70,167 @@ function render(options) {
 }
 const __test = bundled.__test;
 
-test("ribbon keeps the agreed 1/16 compromise so nothing clips when short", () => {
+test("the ribbon defaults to 1/10 of the viewport and is user-resizable", () => {
   const markup = render();
-  // 1/16 of the viewport on a normal window, never shorter than 56px: a 50px
-  // ribbon (805px viewport) clipped captions, labels mode and the gallery.
+  // Default: 1/10 of the viewport, clamped to a band that always fits content.
   assert.match(
     markup,
-    /\.dx-ribbon\{[^}]*height:max\(56px,calc\(100vh \/ 16\)\)/,
+    /\.dx-ribbon\{[^}]*height:clamp\(72px,calc\(100vh \/ 10\),240px\)/,
   );
-  assert.match(markup, /\.dx-ribbon\{[^}]*min-height:56px/);
+  // The old 1/16 rule is gone, and so is the 56px floor it needed.
+  assert.equal(source.includes("100vh / 16"), false);
+  assert.doesNotMatch(markup, /max\(56px,calc\(100vh/);
+  assert.match(markup, /\.dx-ribbon\{[^}]*min-height:64px/);
+  assert.match(markup, /\.dx-ribbon\{[^}]*max-height:50vh/);
   assert.match(markup, /\.dx-ribbon\{[^}]*overflow-x:auto/);
   assert.match(markup, /\.dx-ribbon\{[^}]*overflow-y:hidden/);
-  // The old 120px cap and 36px floor are gone; they are what moved the height
-  // away from the constant rule.
+  // The bottom 6px strip is reserved for the handle so nothing hides under it.
+  assert.match(markup, /\.dx-ribbon\{[^}]*padding:0 6px 6px/);
+  // The old caps that moved the height away from the rule are gone.
   assert.doesNotMatch(markup, /\.dx-ribbon\{[^}]*max-height:120px/);
   assert.doesNotMatch(markup, /\.dx-ribbon\{[^}]*min-height:36px/);
   // The height must not be driven by the active tab's content.
   assert.doesNotMatch(markup, /\.dx-ribbon\{[^}]*min-height:7[0-9]px/);
 });
 
+test("the ribbon exposes a keyboard-accessible drag separator", () => {
+  const markup = render();
+  assert.match(markup, /class="dx-ribbon-handle"/);
+  assert.match(markup, /class="dx-ribbon-grip"/);
+  assert.match(markup, /role="separator"/);
+  assert.match(markup, /aria-orientation="horizontal"/);
+  assert.match(markup, /aria-label="Ribbon height"/);
+  assert.match(markup, /aria-valuemin="64"/);
+  assert.match(markup, /aria-valuenow="\d+"/);
+  assert.match(markup, /aria-valuemax="\d+"/);
+  assert.match(markup, /aria-valuetext="\d+ pixels"/);
+  assert.match(
+    markup,
+    /title="Drag to resize the ribbon; double-click to reset"/,
+  );
+  // The strip is focusable and row-resize, 6px tall.
+  assert.match(markup, /\.dx-ribbon-handle\{[^}]*cursor:row-resize/);
+  assert.match(markup, /\.dx-ribbon-handle\{[^}]*height:6px/);
+  assert.match(
+    markup,
+    /\.dx-ribbon-handle:focus-visible\{[^}]*outline:2px solid/,
+  );
+  // A double click and Enter/Space reset to the default.
+  const handleSource = source.slice(
+    source.indexOf("function RibbonResizer"),
+    source.indexOf("function ribbonStyle"),
+  );
+  assert.match(handleSource, /onDoubleClick: \(\) => apply\(null, true\)/);
+  assert.match(handleSource, /event\.key === "Enter"/);
+  assert.match(handleSource, /event\.key === "ArrowUp"/);
+  assert.match(handleSource, /event\.key === "ArrowDown"/);
+  assert.match(handleSource, /event\.key === "Home"/);
+  assert.match(handleSource, /event\.key === "End"/);
+  assert.match(handleSource, /RIBBON_KEYBOARD_STEP/);
+  assert.match(handleSource, /setPointerCapture/);
+  assert.match(handleSource, /releasePointerCapture/);
+  // The File backstage follows the measured ribbon bottom, not a constant.
+  assert.match(
+    markup,
+    /\.dx-backstage\{[^}]*top:var\(--dx-ribbon-bottom,72px\)/,
+  );
+  assert.equal(markup.includes("top:72px;bottom:0"), false);
+  assert.match(source, /new ResizeObserver\(measure\)/);
+  assert.match(source, /"--dx-ribbon-bottom"/);
+});
+
+test("ribbon height helpers clamp and default to the 1/10 rule", () => {
+  const { defaultRibbonHeight, clampRibbonHeight, ribbonMaxHeight } = __test;
+  // 900px viewport -> 90px, 1080 -> 108, tiny -> the 72px floor, huge -> 240.
+  assert.equal(defaultRibbonHeight(900), 90);
+  assert.equal(defaultRibbonHeight(1080), 108);
+  assert.equal(defaultRibbonHeight(500), 72);
+  assert.equal(defaultRibbonHeight(4000), 240);
+  assert.equal(defaultRibbonHeight(0), 72);
+  // Dragging clamps to 64px … 50vh.
+  assert.equal(ribbonMaxHeight(900), 450);
+  assert.equal(ribbonMaxHeight(0), 240);
+  assert.equal(clampRibbonHeight(40, 900), 64);
+  assert.equal(clampRibbonHeight(900, 900), 450);
+  assert.equal(clampRibbonHeight(140, 900), 140);
+  assert.equal(clampRibbonHeight(139.6, 900), 140);
+  assert.equal(clampRibbonHeight(5000, 0), 240);
+  assert.equal(clampRibbonHeight(null, 900), null);
+  assert.equal(clampRibbonHeight(Number.NaN, 900), null);
+});
+
+test("the chosen ribbon height round-trips through localStorage", () => {
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  try {
+    assert.equal(__test.RIBBON_HEIGHT_KEY, "dsh-doc:ribbon-height");
+    assert.equal(__test.readStoredRibbonHeight(), null, "unset by default");
+    __test.storeRibbonHeight(140.4);
+    assert.equal(storage.get("dsh-doc:ribbon-height"), "140");
+    assert.equal(__test.readStoredRibbonHeight(), 140);
+    // A reset removes the key, so the CSS 1/10 default applies again.
+    __test.storeRibbonHeight(null);
+    assert.equal(storage.has("dsh-doc:ribbon-height"), false);
+    // A corrupt value is ignored instead of throwing.
+    storage.set("dsh-doc:ribbon-height", "tall");
+    assert.equal(__test.readStoredRibbonHeight(), null);
+    // A fresh panel state restores the stored height on mount.
+    storage.set("dsh-doc:ribbon-height", "220");
+    assert.equal(__test.initialState().ribbonHeight, 220);
+    const markup = render({ ribbonHeight: 220 });
+    assert.match(
+      markup,
+      /class="dx-ribbon" id="dx-ribbon"[^>]*style="height:220px"/,
+    );
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test("the chooser remembers the folder that was actually opened", () => {
+  const storage = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  try {
+    assert.equal(__test.LAST_FOLDER_KEY, "dsh-doc:last-folder");
+    assert.equal(__test.readStoredFolder(), "");
+    __test.storeFolder("C:\\Users\\me\\Documents\\Reports");
+    assert.equal(
+      __test.readStoredFolder(),
+      "C:\\Users\\me\\Documents\\Reports",
+    );
+    assert.equal(
+      __test.folderPathOf("C:\\Users\\me\\Documents\\Reports\\Q3.docx"),
+      "C:\\Users\\me\\Documents\\Reports",
+    );
+    assert.equal(
+      __test.folderPathOf("/home/me/Documents/Q3.docx"),
+      "/home/me/Documents",
+    );
+    assert.equal(__test.folderPathOf("Q3.docx"), "");
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
 test("captions and group contents cannot clip inside the ribbon", () => {
   const markup = render();
-  // A caption is one 9px line box: no vertical ellipsis clipping.
-  assert.match(markup, /\.dx-group-label\{[^}]*line-height:1[;}]/);
+  // A caption is one 9px line whose line box holds the full glyph height
+  // (line-height 1.2), so descenders are never cut by the 64px floor.
+  assert.match(markup, /\.dx-group-label\{[^}]*line-height:1\.2/);
   assert.match(markup, /\.dx-group-label\{[^}]*white-space:nowrap/);
+  // Labels mode uses the same roomy line box for its per-tool captions.
+  assert.match(
+    markup,
+    /\.dx-show-labels \.dx-tool \.dx-tool-label\{[^}]*line-height:1\.2/,
+  );
   // Group items are centred, so a 30px button never hugs the caption.
   assert.match(markup, /\.dx-group-items\{[^}]*align-items:center/);
   // Labels mode and the style gallery are bounded by the available height.
@@ -112,7 +252,7 @@ test("the File compact row and the backstage header keep their own height", () =
   const markup = render({ tab: "file" });
   assert.match(markup, /\.dx-file-compact\{[^}]*height:100%/);
   assert.match(markup, /\.dx-file-compact\{[^}]*overflow-y:hidden/);
-  assert.match(markup, /\.dx-file-compact \.dx-tool\{[^}]*width:30px/);
+  assert.match(markup, /\.dx-file-compact \.dx-tool\{[^}]*width:32px/);
   assert.match(markup, /\.dx-backstage-head\{[^}]*flex:0 0 auto/);
   assert.match(markup, /\.dx-backstage-head\{[^}]*min-height:52px/);
 });
@@ -174,35 +314,80 @@ test("the palette follows the real DSH theme tokens in both modes", () => {
     );
 });
 
-test("tool icons are 20px with the stronger 1.8 stroke and currentColor", () => {
+test("tool icons are 22px with the 1.9 stroke and currentColor", () => {
   const markup = render({ tab: "home" });
   assert.match(
     markup,
-    /aria-label="Undo"[^>]*><svg[^>]*width="20"[^>]*height="20"[^>]*stroke="currentColor"[^>]*stroke-width="1\.8"/,
+    /aria-label="Undo"[^>]*><svg[^>]*width="22"[^>]*height="22"[^>]*stroke="currentColor"[^>]*stroke-width="1\.9"/,
   );
-  // No 15/16px tool icons and no 1.7 stroke remain in the ribbon.
+  // No 15/16/20px tool icons and no 1.7/1.8 stroke remain on the ribbon tools.
   assert.doesNotMatch(markup, /aria-label="Undo"[^>]*><svg[^>]*width="1[56]"/);
+  assert.doesNotMatch(markup, /aria-label="Undo"[^>]*><svg[^>]*width="20"/);
   assert.doesNotMatch(
     markup,
-    /aria-label="Undo"[^>]*><svg[^>]*stroke-width="1\.7"/,
+    /aria-label="Undo"[^>]*><svg[^>]*stroke-width="1\.[78]"/,
   );
-  // The glyph buttons grow with the pictograms.
-  assert.match(markup, /\.dx-glyph\{[^}]*width:20px;height:20px/);
+  // Every icon stays inside the 24-unit grid with round caps and joins.
+  assert.match(
+    markup,
+    /aria-label="Undo"[^>]*><svg[^>]*viewBox="0 0 24 24"[^>]*stroke-linecap="round"[^>]*stroke-linejoin="round"/,
+  );
 });
 
-test("tool buttons are 30px and no fixed 24px tool size remains", () => {
+function buttonMarkup(markup, label) {
+  const needle = `aria-label="${label}"`;
+  const at = markup.indexOf(needle);
+  assert.notEqual(at, -1, `the ribbon should render the "${label}" tool`);
+  const start = markup.lastIndexOf("<button", at);
+  const end = markup.indexOf("</button>", at);
+  return markup.slice(start, end + "</button>".length);
+}
+
+test("the Font group draws B/I/U/S/sub/sup as SVG paths, not text glyphs", () => {
+  const markup = render({ tab: "home" });
+  const labels = [
+    "Bold",
+    "Italic",
+    "Underline",
+    "Strikethrough",
+    "Subscript",
+    "Superscript",
+  ];
+  for (const label of labels) {
+    const button = buttonMarkup(markup, label);
+    // A real pictogram: 22px SVG with at least one path, no letter text node.
+    assert.match(button, /<svg[^>]*width="22"[^>]*height="22"/, label);
+    assert.match(button, /stroke-width="1\.9"/, label);
+    assert.match(button, /<path d="M/, label);
+    assert.doesNotMatch(button, /dx-glyph/, label);
+    assert.doesNotMatch(button, />\s*[BIUS]\s*</, label);
+    assert.doesNotMatch(button, />x[²₂]</, label);
+  }
+  // The glyph component and its stylesheet rules are gone entirely.
+  assert.equal(source.includes("dx-glyph"), false);
+  assert.equal(source.includes("glyph:"), false);
+  // Labels mode still keeps its captions and tooltips.
+  const labelled = render({ tab: "home", showLabels: true });
+  assert.ok(labelled.includes(">Bold<"));
+  assert.match(buttonMarkup(labelled, "Bold"), /title="Bold \(Ctrl\+B\)/);
+});
+
+test("tool buttons are 32px and grow to a 34px minimum with labels", () => {
   const markup = render();
-  assert.match(markup, /\.dx-tool\{[^}]*width:30px;height:30px/);
+  assert.match(markup, /\.dx-tool\{[^}]*width:32px;height:32px/);
+  assert.doesNotMatch(markup, /\.dx-tool\{[^}]*width:30px/);
+  assert.doesNotMatch(markup, /\.dx-tool\{[^}]*height:30px/);
   assert.doesNotMatch(markup, /\.dx-tool\{[^}]*width:24px/);
   assert.doesNotMatch(markup, /\.dx-tool\{[^}]*height:24px/);
-  assert.doesNotMatch(markup, /\.dx-tool-small\{[^}]*24px/);
-  assert.doesNotMatch(markup, /\.dx-tool-tiny\{[^}]*24px/);
-  assert.doesNotMatch(markup, /\.dx-file-compact \.dx-tool\{[^}]*28px/);
+  assert.doesNotMatch(markup, /\.dx-tool-small\{[^}]*30px/);
+  assert.doesNotMatch(markup, /\.dx-tool-tiny\{[^}]*30px/);
+  assert.doesNotMatch(markup, /\.dx-file-compact \.dx-tool\{[^}]*30px/);
   // Labels mode gives the compact variants more room, not less.
   assert.match(
     markup,
-    /\.dx-show-labels \.dx-tool\.dx-tool-small[\s\S]{0,160}?min-width:32px/,
+    /\.dx-show-labels \.dx-tool\.dx-tool-small[\s\S]{0,160}?min-width:34px/,
   );
+  assert.match(markup, /\.dx-show-labels \.dx-tool\{[^}]*min-width:34px/);
   // Disabled tools stay readable.
   assert.match(markup, /\.dx-tool\[disabled\]\{opacity:\.55/);
   // Hover/active/pressed use the brand colour and a visible fill.
@@ -392,4 +577,74 @@ test("opening by an advanced path reveals the document and prepares the session"
     source,
     /const result = await apiClient\.open\(trimmed\)/,
   );
+});
+
+test("Ctrl+O opens the in-panel file chooser from the panel root", () => {
+  // The root keydown handler owns the shortcut, not a window listener: the
+  // panel only takes Ctrl+O while it is mounted and focused.
+  assert.match(source, /const handleKeyDown = React\.useCallback/);
+  const at = source.indexOf('event.key === "o" || event.key === "O"');
+  assert.notEqual(at, -1, "Ctrl+O is handled");
+  const block = source.slice(at - 80, at + 500);
+  assert.match(block, /!typing/);
+  assert.match(block, /event\.preventDefault\(\)/);
+  assert.match(block, /openFileChooserRef\.current\(\)/);
+  // A text field or the contenteditable document owns the keystroke, and an
+  // open dialog returns before the shortcut is considered.
+  assert.match(
+    source,
+    /const typing =\s*target &&[\s\S]{0,320}?contenteditable=true/,
+  );
+  assert.match(source, /if \(inDialog\) \{/);
+  // The chooser opens the existing /browse dialog at the remembered folder.
+  assert.match(source, /const openFileChooser = React\.useCallback/);
+  const chooser = source.slice(
+    source.indexOf("const openFileChooser = React.useCallback"),
+    source.indexOf("openFileChooserRef.current = openFileChooser"),
+  );
+  assert.match(chooser, /readStoredFolder\(\)/);
+  assert.match(chooser, /openBrowseDialog\(target\)/);
+  // Every entry point calls the same action.
+  assert.match(source, /case "openFileChooser":\s*await openFileChooser\(\);/);
+  assert.match(source, /h\("input", \{\s*key: "file-input"/);
+  // The OS file dialog is a secondary option: if click() is unavailable the
+  // panel opens the chooser instead of dead-ending on a notice.
+  const openDocument = source.slice(
+    source.indexOf('case "openDocument":'),
+    source.indexOf('case "toggleAdvanced":'),
+  );
+  assert.match(openDocument, /fileInputRef\.current\.click\(\)/);
+  assert.match(openDocument, /await openFileChooser\(\)/);
+  assert.equal(
+    source.includes("This Host cannot open the native file dialog; use"),
+    false,
+  );
+  // Opening a document from the chooser still goes through /open-path and the
+  // shared finish flow (Home tab + workspace/chat chip).
+  const openFromBrowse = source.slice(
+    source.indexOf("const openFromBrowse = React.useCallback"),
+    source.indexOf("const openCurrentFolder = React.useCallback"),
+  );
+  assert.match(openFromBrowse, /runOpenDocumentPathFlow\(path/);
+  assert.match(openFromBrowse, /storeFolder\(folder\)/);
+  assert.match(openFromBrowse, /finishOpenedDocument\(result\)/);
+});
+
+test("the File tab offers Open file… next to the device and folder pickers", () => {
+  const markup = render({ tab: "file" });
+  assert.ok(markup.includes(">Open file…<"));
+  assert.ok(markup.includes(">Open from this device…<"));
+  assert.ok(markup.includes(">Choose folder…<"));
+  // The compact ribbon row and the backstage Document column both expose it.
+  const compactRow = markup.slice(
+    markup.indexOf('class="dx-file-compact"'),
+    markup.indexOf("</div>", markup.indexOf('class="dx-file-compact"')),
+  );
+  assert.ok(compactRow.includes('aria-label="Open file…"'));
+  const backstage = markup.slice(markup.indexOf('class="dx-backstage"'));
+  assert.ok(backstage.includes('aria-label="Open file…"'));
+  // The empty state's open affordance reaches the same chooser.
+  const empty = render({ noDocument: true });
+  assert.ok(empty.includes(">Open file…<"));
+  assert.ok(empty.includes(">Open by path<"));
 });

@@ -598,7 +598,7 @@ test("ribbon tools are icon-only by default and Show labels restores text", () =
   const compact = render({ tab: "home" });
   // No label nodes at all; the stylesheet rule alone is not a label.
   assert.ok(!compact.includes('class="dx-tool-label"'));
-  assert.match(compact, /\.dx-tool\{[^}]*width:30px;height:30px/);
+  assert.match(compact, /\.dx-tool\{[^}]*width:32px;height:32px/);
 
   // The tooltip and the accessible name both survive, and the shortcut is in
   // the tooltip where the editor implements one.
@@ -695,7 +695,10 @@ test("ribbon tools are icon-only by default and Show labels restores text", () =
 test("the File tab offers native pickers, a scoped file input and advanced path", () => {
   const markup = render({ tab: "file" });
   assert.ok(markup.includes("Choose folder…"));
-  assert.ok(markup.includes("Open document…"));
+  // The in-panel chooser is the primary "choose file" path; the OS dialog is
+  // the documented secondary option.
+  assert.ok(markup.includes("Open file…"));
+  assert.ok(markup.includes("Open from this device…"));
 
   // A real hidden file input with the documented accept filter, not a stub.
   const input = tagAround(
@@ -814,6 +817,21 @@ test("the folder browser dialog renders a mocked /browse payload", () => {
   assert.ok(markup.includes("40 KB"), "the Host-reported size is shown");
   assert.ok(markup.includes("Open this folder"));
 
+  // The chooser offers the native directory picker next to Up / New folder.
+  assert.ok(
+    markup.includes('aria-label="Choose folder with the system dialog"'),
+  );
+  assert.match(
+    tagAround(markup, 'aria-label="Choose folder with the system dialog"'),
+    /class="dx-btn"/,
+  );
+  // The test host has no `uiWorkspace.pickDirectory`, so the button is honestly
+  // disabled rather than pretending it can open a dialog.
+  assert.match(
+    tagAround(markup, 'aria-label="Choose folder with the system dialog"'),
+    /disabled=""/,
+  );
+
   // Host errors render inside the dialog, not as a blocked editor.
   const failing = render({
     dialog: __test.browseDialogState(payload, {
@@ -830,6 +848,66 @@ test("the folder browser dialog renders a mocked /browse payload", () => {
   });
   assert.match(__test.describeBrowseFailure(missing), /Advanced: path/);
   assert.match(__test.describeBrowseFailure(missing), /\/browse/);
+});
+
+test("the chooser's Choose folder… button calls the native picker when available", () => {
+  const dialog = __test.browseDialogState({
+    path: "C:\\Users\\me\\Documents\\Reports",
+    parent: "C:\\Users\\me\\Documents",
+    roots: [],
+    entries: [],
+  });
+  const calls = [];
+  const api = { onAction: (run, arg) => calls.push({ run, arg }) };
+  const element = __test.BrowseDialog({ api, dialog, canPickDirectory: true });
+  const button = findByAriaLabel(
+    element,
+    "Choose folder with the system dialog",
+  );
+  assert.ok(button, "the native folder picker entry point exists");
+  assert.equal(button.props.disabled, false);
+  button.props.onClick();
+  assert.deepEqual(calls, [{ run: "chooseFolder", arg: undefined }]);
+});
+
+test("the File document column wires the chooser and the device picker", () => {
+  const calls = [];
+  const api = {
+    onAction: (run) => calls.push(run),
+    onToggleAdvanced: () => undefined,
+    onFilePicked: () => undefined,
+    fileInputRef: null,
+  };
+  const element = __test.FileActions({
+    ctx: {
+      readOnly: false,
+      offline: false,
+      browseRoots: [],
+      advancedOpen: false,
+      advancedPath: "",
+    },
+    api,
+  });
+  const chooser = findByAriaLabel(element, "Open file…");
+  assert.ok(chooser, "the in-panel chooser is the primary open action");
+  assert.equal(chooser.props.disabled, false);
+  chooser.props.onClick();
+  assert.deepEqual(calls, ["openFileChooser"]);
+
+  const device = findByAriaLabel(element, "Open from this device…");
+  assert.ok(device, "the OS file dialog stays as a secondary option");
+  device.props.onClick();
+  assert.deepEqual(calls, ["openFileChooser", "openDocument"]);
+
+  // The hidden input keeps the documented accept filter and the Host upload
+  // handler; it is rendered in the same column, not a separate surface.
+  const input = findElement(
+    element,
+    (node) => node.props && node.props.type === "file",
+  );
+  assert.ok(input);
+  assert.equal(input.props.accept, __test.DOCUMENT_ACCEPT);
+  assert.equal(typeof input.props.onChange, "function");
 });
 
 test("opening a folder switches the workspace and prepares one chat session", async () => {
