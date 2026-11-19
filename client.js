@@ -711,7 +711,9 @@ window.__ModuleLoader__.load({
   background:var(--dx-hover);color:var(--dx-muted);font-size:11.5px;line-height:1.4;
 }
 .dx-overlay{
-  position:absolute;inset:0;z-index:20;display:flex;align-items:flex-start;justify-content:center;
+  /* Above the File backstage (z-index 40): commands opened from the backstage
+     must show their dialog in front of it. */
+  position:absolute;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;
   padding-top:64px;background:rgba(20,20,20,.28);overflow:auto;
 }
 .dx-dialog{
@@ -4402,6 +4404,47 @@ window.__ModuleLoader__.load({
       // "backstage" opens below it as an overlay so it cannot change that
       // height. Escape or Close returns to the document.
       const [backstage, setBackstage] = React.useState(true);
+      const closeBackstage = React.useCallback(() => {
+        setBackstage(false);
+        // Return focus to the File tab so keyboard users stay oriented.
+        if (typeof document !== "undefined") {
+          const tabButton = document.getElementById("dx-tab-file");
+          if (tabButton && typeof tabButton.focus === "function")
+            tabButton.focus();
+        }
+      }, []);
+      React.useEffect(() => {
+        if (!backstage) return undefined;
+        // The backstage is a disclosure, not a focus trap: Escape must close it
+        // wherever focus is (Word closes the Backstage the same way), including
+        // while focus is still on the File tab button.
+        const onKeyDown = (event) => {
+          if (event.key !== "Escape") return;
+          // An open dialog owns Escape: it closes itself and the backstage
+          // stays behind it. Only close the backstage when no dialog is up.
+          const target = event.target;
+          if (
+            target &&
+            typeof target.closest === "function" &&
+            target.closest(".dx-overlay")
+          )
+            return;
+          if (
+            typeof document !== "undefined" &&
+            document.querySelector(".dx-dialog")
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          closeBackstage();
+        };
+        if (typeof window !== "undefined" && window.addEventListener)
+          window.addEventListener("keydown", onKeyDown, true);
+        return () => {
+          if (typeof window !== "undefined" && window.removeEventListener)
+            window.removeEventListener("keydown", onKeyDown, true);
+        };
+      }, [backstage, closeBackstage]);
       const disabled = ctx.readOnly ? REASONS.readOnly : null;
       const remoteDisabled = ctx.offline ? REASONS.offline : null;
       const compact = (run, label, icon, extra) => {
@@ -4476,12 +4519,6 @@ window.__ModuleLoader__.load({
                 role: "dialog",
                 "aria-modal": "false",
                 "aria-label": "File",
-                onKeyDown: (event) => {
-                  if (event.key === "Escape") {
-                    event.stopPropagation();
-                    setBackstage(false);
-                  }
-                },
               },
               h(
                 "div",
@@ -4494,7 +4531,7 @@ window.__ModuleLoader__.load({
                     className: "dx-tool dx-tool-small",
                     title: "Close File",
                     "aria-label": "Close File",
-                    onClick: () => setBackstage(false),
+                    onClick: closeBackstage,
                   },
                   h(Icon, { name: "close", size: 15 }),
                 ),

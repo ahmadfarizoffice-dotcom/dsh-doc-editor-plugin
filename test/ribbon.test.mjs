@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The ribbon must keep one constant height on every tab: 1/16 of the viewport.
  * Groups stay on a single row and scroll horizontally instead of wrapping, so
  * switching from File to Home never moves the document.
@@ -114,6 +114,32 @@ test("the File tab keeps the same ribbon height and opens its details as an over
   assert.match(markup, /Choose folder…/);
   // The overlay is positioned absolutely, so it cannot add layout height.
   assert.match(markup, /\.dx-backstage\{[^}]*position:absolute/);
+});
+
+test("dialogs from the File backstage stack above it", () => {
+  const markup = render({ tab: "file" });
+  const overlay = markup.match(/\.dx-overlay\{[^}]*z-index:(\d+)/);
+  const backstage = markup.match(/\.dx-backstage\{[^}]*z-index:(\d+)/);
+  assert.ok(overlay, "the dialog overlay has a z-index");
+  assert.ok(backstage, "the backstage has a z-index");
+  assert.ok(
+    Number(overlay[1]) > Number(backstage[1]),
+    `dialog overlay (${overlay[1]}) must stack above the backstage (${backstage[1]})`,
+  );
+});
+
+test("Escape closes the File backstage even when focus is outside it", () => {
+  const source = readFileSync(clientPath, "utf8");
+  // A window-level capture listener is required: a handler on the overlay div
+  // never sees keydown while focus is on the File tab button.
+  assert.match(
+    source,
+    /window\.addEventListener\("keydown",\s*onKeyDown,\s*true\)/,
+  );
+  assert.match(source, /getElementById\("dx-tab-file"\)/);
+  assert.match(source, /closeBackstage/);
+  // Dialogs own Escape first.
+  assert.match(source, /querySelector\("\.dx-dialog"\)/);
 });
 
 test("icon-only mode omits labels but keeps tooltips, and the toggle restores them", () => {
