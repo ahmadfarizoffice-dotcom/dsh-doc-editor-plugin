@@ -62,6 +62,32 @@ window.__ModuleLoader__.load({
       noDocument: "Open a document first.",
     };
 
+    /**
+     * `localStorage` key for the View → Show labels ribbon preference. The
+     * panel is icon-only by default; the toggle restores text labels for users
+     * who want them and remembers the choice for this browser.
+     */
+    const LABELS_KEY = "dsh-doc:labels";
+
+    /** Keyboard shortcuts the editor implements, used in icon-only tooltips. */
+    const SHORTCUTS = {
+      undo: "Ctrl+Z",
+      redo: "Ctrl+Y",
+      bold: "Ctrl+B",
+      italic: "Ctrl+I",
+      underline: "Ctrl+U",
+      find: "Ctrl+F",
+      selectAll: "Ctrl+A",
+      save: "Ctrl+S",
+    };
+
+    /**
+     * The document types the Host can import through `POST /open`; the hidden
+     * `<input type="file">` and its accept filter use this exact list.
+     */
+    const DOCUMENT_ACCEPT =
+      ".docx,.dotx,.docm,.doc,.dot,.odt,.ott,.rtf,.html,.htm,.xhtml,.md,.markdown,.txt,.pages,.gdoc";
+
     const FONT_FALLBACKS = [
       "Calibri",
       "Calibri Light",
@@ -293,6 +319,16 @@ window.__ModuleLoader__.load({
         "M13 5v14",
       ],
       page: ["M6 2h9l5 5v15H6z", "M15 2v5h5"],
+      folder: ["M3 7h6l2 2h10v10H3z", "M3 7V5h6l2 2"],
+      folderPlus: [
+        "M3 7h6l2 2h10v10H3z",
+        "M3 7V5h6l2 2",
+        "M12 12v5M9.5 14.5h5",
+      ],
+      up: "M12 19V5M6 11l6-6 6 6",
+      labels: ["M4 5h9l7 7-7 7H4z", { circle: [8.5, 12, 1.3] }],
+      chat: ["M4 5h16v11H9l-5 4z", "M8 9h8M8 12.5h5"],
+      device: [{ rect: [4, 3.5, 16, 12, 1.5] }, "M2.5 19h19", "M10 15.5h4"],
       grid: [
         { rect: [4, 4, 6, 6, 1] },
         { rect: [14, 4, 6, 6, 1] },
@@ -461,34 +497,41 @@ window.__ModuleLoader__.load({
 .dx-ribbon-file[aria-selected=true]{color:var(--dx-accent);font-weight:600;border-bottom:2px solid var(--dx-accent);}
 
 /* ------------------------------------------------------------ ribbon */
+/* Icon-only ribbon: 28 px targets, wrapped rows per group, captions kept. */
 .dx-ribbon{
-  display:flex;align-items:stretch;gap:0;flex:0 0 auto;min-height:94px;padding:3px 6px 0;
+  display:flex;align-items:stretch;gap:0;flex:0 0 auto;min-height:70px;padding:2px 6px 0;
   overflow-x:auto;overflow-y:hidden;background:var(--dx-surface);border-bottom:1px solid var(--dx-border);
 }
 .dx-ribbon[hidden]{display:none;}
 .dx-group{
   display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;
-  min-height:88px;padding:4px 8px 2px;border-right:1px solid var(--dx-border);
+  min-height:66px;padding:2px 6px 1px;border-right:1px solid var(--dx-border);
 }
 .dx-group:last-child{border-right:0;}
-.dx-group-items{display:flex;align-items:flex-start;gap:2px;max-width:420px;flex-wrap:wrap;align-content:flex-start;}
-.dx-group-items.dx-column{flex-direction:column;flex-wrap:nowrap;max-height:74px;}
+.dx-group-items{display:flex;align-items:flex-start;gap:2px;max-width:340px;flex-wrap:wrap;align-content:flex-start;}
+.dx-group-items.dx-column{flex-direction:column;flex-wrap:nowrap;max-height:62px;}
 .dx-group-label{
-  margin-top:2px;text-align:center;color:var(--dx-muted);font-size:10px;white-space:nowrap;
+  margin-top:1px;text-align:center;color:var(--dx-muted);font-size:10px;line-height:1.2;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;
 }
 .dx-tool{
-  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
-  min-width:26px;height:52px;padding:3px 4px;border:1px solid transparent;border-radius:var(--dx-radius);
+  display:inline-flex;align-items:center;justify-content:center;gap:2px;
+  width:28px;height:28px;min-width:28px;padding:2px;border:1px solid transparent;border-radius:var(--dx-radius);
   background:transparent;color:var(--dx-text);cursor:pointer;font-size:10.5px;line-height:1.1;
 }
 .dx-tool .dx-tool-label{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dx-tool:hover:not([disabled]){background:var(--dx-hover);border-color:var(--dx-border);}
 .dx-tool[aria-pressed=true]{background:var(--dx-selected);border-color:var(--dx-accent);}
 .dx-tool[disabled]{opacity:.42;cursor:not-allowed;}
-.dx-tool.dx-tool-small{height:26px;flex-direction:row;gap:4px;font-size:12px;}
-.dx-tool.dx-tool-small .dx-tool-label{max-width:none;}
-.dx-tool.dx-tool-tiny{height:24px;min-width:24px;padding:2px;justify-content:center;}
+.dx-tool:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-1px;}
+.dx-tool.dx-tool-small{height:28px;min-width:28px;font-size:10.5px;}
+.dx-tool.dx-tool-tiny{height:28px;min-width:28px;padding:2px;}
+/* View → Show labels restores the previous text labels. */
+.dx-show-labels .dx-tool{width:auto;min-width:46px;height:46px;flex-direction:column;gap:1px;padding:3px 4px;}
+.dx-show-labels .dx-tool .dx-tool-label{display:block;}
+.dx-show-labels .dx-tool.dx-tool-small,
+.dx-show-labels .dx-tool.dx-tool-tiny{height:26px;min-width:26px;flex-direction:row;gap:4px;font-size:12px;}
+.dx-show-labels .dx-group{min-height:66px;}
 .dx-icon{display:block;flex:0 0 auto;}
 .dx-glyph{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:14px;font-weight:700;font-family:"Segoe UI",Georgia,serif;}
 .dx-glyph.dx-glyph-italic{font-style:italic;font-weight:600;}
@@ -505,14 +548,17 @@ window.__ModuleLoader__.load({
   height:26px;max-width:150px;padding:0 4px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
   background:var(--dx-surface);color:var(--dx-text);font:inherit;font-size:12px;
 }
-.dx-gallery{display:flex;gap:4px;overflow-x:auto;max-width:330px;padding-bottom:2px;}
+.dx-gallery{display:flex;gap:3px;overflow-x:auto;max-width:330px;padding-bottom:2px;}
 .dx-style-card{
-  min-width:74px;max-width:120px;height:54px;padding:5px 7px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
+  display:inline-flex;align-items:center;justify-content:center;min-width:34px;max-width:52px;height:30px;
+  padding:2px 4px;border:1px solid var(--dx-border);border-radius:var(--dx-radius);
   background:var(--dx-surface);color:var(--dx-text);cursor:pointer;text-align:left;font-size:11px;overflow:hidden;
 }
 .dx-style-card:hover{background:var(--dx-hover);}
 .dx-style-card[aria-pressed=true]{border-color:var(--dx-accent);background:var(--dx-selected);}
-.dx-style-card b{display:block;font-size:15px;line-height:1.1;margin-bottom:2px;font-weight:400;}
+.dx-style-card b{display:block;font-size:14px;line-height:1.1;font-weight:400;}
+.dx-show-labels .dx-style-card{display:block;min-width:74px;max-width:120px;height:54px;padding:5px 7px;}
+.dx-show-labels .dx-style-card b{margin-bottom:2px;}
 .dx-ribbon-note{
   align-self:center;max-width:330px;margin:0 10px;color:var(--dx-muted);font-size:11.5px;line-height:1.4;
 }
@@ -706,6 +752,66 @@ window.__ModuleLoader__.load({
 .dx-file-meta b{color:var(--dx-text);font-weight:600;}
 .dx-kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:11.5px;color:var(--dx-muted);}
 .dx-kv b{color:var(--dx-text);font-weight:500;}
+
+/* workspace + chat session chip */
+.dx-sessionbar{
+  display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:4px 10px;min-height:30px;
+  background:var(--dx-hover);border-bottom:1px solid var(--dx-border);color:var(--dx-text);font-size:12px;
+}
+.dx-sessionbar[data-status=no-harness-workspace]{border-bottom-color:var(--dx-danger);}
+.dx-session-icon{color:var(--dx-accent);}
+.dx-sessionbar[data-status=no-harness-workspace] .dx-session-icon{color:var(--dx-danger);}
+.dx-session-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
+.dx-session-warn{color:var(--dx-danger);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dx-session-spacer{flex:1 1 auto;}
+
+/* File tab: advanced path disclosure + hidden native pickers */
+.dx-file-input{display:none;}
+.dx-advanced{margin-top:2px;font-size:11.5px;color:var(--dx-muted);}
+.dx-advanced summary{cursor:pointer;padding:3px 0;font-size:11.5px;color:var(--dx-muted);}
+.dx-advanced summary:hover{color:var(--dx-text);}
+.dx-advanced-body{display:flex;flex-direction:column;gap:5px;padding-top:4px;}
+.dx-roots{display:flex;flex-wrap:wrap;gap:4px;}
+.dx-root-link{
+  border:1px solid var(--dx-border);background:var(--dx-surface);color:var(--dx-text);
+  border-radius:999px;padding:2px 8px;font-size:11px;cursor:pointer;max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dx-root-link:hover{background:var(--dx-hover);}
+
+/* in-panel folder browser */
+.dx-dialog.dx-dialog-wide{width:min(580px,94%);max-height:82vh;overflow:auto;}
+.dx-browse{display:flex;flex-direction:column;gap:8px;min-height:0;}
+.dx-browse-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.dx-breadcrumbs{
+  display:flex;align-items:center;gap:1px;flex-wrap:wrap;flex:1 1 160px;min-width:0;
+  font-size:11.5px;color:var(--dx-muted);
+}
+.dx-crumb{
+  border:0;background:transparent;color:var(--dx-accent);cursor:pointer;padding:1px 3px;
+  font-size:11.5px;border-radius:var(--dx-radius);max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dx-crumb:hover{background:var(--dx-hover);}
+.dx-crumb[aria-current=page]{color:var(--dx-text);font-weight:600;}
+.dx-crumb-sep{opacity:.55;}
+.dx-browse-list{
+  display:flex;flex-direction:column;gap:1px;max-height:250px;overflow:auto;
+  border:1px solid var(--dx-border);border-radius:var(--dx-radius);padding:2px;
+}
+.dx-browse-item{
+  display:flex;align-items:center;gap:7px;width:100%;padding:5px 7px;border:0;border-radius:var(--dx-radius);
+  background:transparent;color:var(--dx-text);cursor:pointer;font-size:12px;text-align:left;
+}
+.dx-browse-item:hover:not([disabled]){background:var(--dx-hover);}
+.dx-browse-item[disabled]{opacity:.5;cursor:not-allowed;}
+.dx-browse-item:focus-visible{outline:2px solid var(--dx-accent);outline-offset:-1px;}
+.dx-browse-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dx-browse-meta{margin-left:auto;color:var(--dx-muted);font-size:10.5px;flex:0 0 auto;}
+.dx-browse-empty{padding:10px;color:var(--dx-muted);font-size:11.5px;text-align:center;}
+.dx-browse-error{margin:0;color:var(--dx-danger);font-size:11.5px;line-height:1.4;}
+.dx-browse-toolbar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.dx-newfolder{display:flex;gap:4px;align-items:center;}
 
 @media (max-width:820px){
   .dx-rail{display:none;}
@@ -1814,6 +1920,37 @@ window.__ModuleLoader__.load({
           body: JSON.stringify({ path }),
         });
       },
+      openUpload(file) {
+        if (typeof FormData !== "function")
+          return Promise.reject(
+            HostError(
+              "UPLOAD_UNSUPPORTED",
+              "This browser cannot build a multipart upload.",
+            ),
+          );
+        const body = new FormData();
+        body.append("file", file, file.name || "document");
+        // No content-type header: the browser adds the multipart boundary.
+        return request("/open", { method: "POST", body });
+      },
+      openPath(path) {
+        return request("/open-path", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+      },
+      browse(path) {
+        const suffix = path ? `?path=${encodeURIComponent(String(path))}` : "";
+        return request(`/browse${suffix}`);
+      },
+      workspace(path, create) {
+        return request("/workspace", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path, create: create === true }),
+        });
+      },
       remove(documentId) {
         return request("/delete", {
           method: "POST",
@@ -1863,6 +2000,476 @@ window.__ModuleLoader__.load({
       });
     }
 
+    /* ------------------------------------------- optional client services */
+
+    /**
+     * The Cordis Context bound by `apply`. The panel reads the optional Client
+     * services (`uiWorkspace`, `layout`) through it instead of injecting them:
+     * an older Host that lacks either service must still render the editor, so
+     * every use is guarded and degrades to the advanced path input.
+     */
+    let clientContext = null;
+
+    function bindClientContext(ctx) {
+      clientContext = ctx || null;
+    }
+
+    /** One optional Client service, or undefined when the page has none. */
+    function clientService(name) {
+      const ctx = clientContext;
+      if (!ctx) return undefined;
+      let value;
+      try {
+        if (typeof ctx.get === "function") value = ctx.get(name);
+      } catch (_error) {
+        value = undefined;
+      }
+      if (value !== undefined) return value;
+      return ctx[name];
+    }
+
+    function workspaceService() {
+      const service = clientService("uiWorkspace");
+      return service && typeof service === "object" ? service : undefined;
+    }
+
+    function layoutService() {
+      const service = clientService("layout");
+      return service && typeof service === "object" ? service : undefined;
+    }
+
+    /** Whether this Host can open the native OS folder dialog. */
+    function canPickDirectory() {
+      const service = workspaceService();
+      return Boolean(service && typeof service.pickDirectory === "function");
+    }
+
+    /** Whether this Host can prepare a chat session in a Harness workspace. */
+    function canStartSession() {
+      const service = workspaceService();
+      return Boolean(service && typeof service.startSession === "function");
+    }
+
+    /* ------------------------------------------------ ribbon label prefs */
+
+    function readStoredLabels() {
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return false;
+        return localStorage.getItem(LABELS_KEY) === "on";
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    function storeLabels(value) {
+      try {
+        if (typeof localStorage === "undefined" || !localStorage) return;
+        if (value) localStorage.setItem(LABELS_KEY, "on");
+        else localStorage.removeItem(LABELS_KEY);
+      } catch (_error) {
+        /* Storage may be unavailable (private mode): the toggle still works. */
+      }
+    }
+
+    /* ------------------------------------------------------ path helpers */
+
+    function pathSeparatorOf(path) {
+      return String(path || "").indexOf("\\") >= 0 ? "\\" : "/";
+    }
+
+    function isRootPath(path) {
+      const value = String(path || "");
+      return value === "/" || /^[A-Za-z]:[\\/]$/.test(value);
+    }
+
+    function trimTrailingSeparator(path) {
+      const value = String(path || "");
+      if (!value || isRootPath(value)) return value;
+      const trimmed = value.replace(/[\\/]+$/, "");
+      return trimmed || pathSeparatorOf(value);
+    }
+
+    function baseNameOf(path) {
+      const value = trimTrailingSeparator(path);
+      if (!value) return "";
+      const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
+      if (index === -1) return value;
+      return value.slice(index + 1) || value;
+    }
+
+    function joinPath(directory, name) {
+      const base = trimTrailingSeparator(directory);
+      const child = String(name || "").replace(/^[\\/]+/, "");
+      if (!base) return child;
+      if (isRootPath(base)) return `${base}${child}`;
+      return `${base}${pathSeparatorOf(base)}${child}`;
+    }
+
+    /**
+     * Breadcrumb segments for one absolute directory, each carrying the path
+     * that clicking it should browse.
+     */
+    function breadcrumbSegments(path) {
+      const value = trimTrailingSeparator(path);
+      if (!value) return [];
+      const windows = /^[A-Za-z]:/.test(value);
+      const sep = windows ? "\\" : "/";
+      const parts = value.split(/[\\/]+/).filter(Boolean);
+      const segments = [];
+      let current = "";
+      parts.forEach((part, index) => {
+        if (index === 0 && windows) {
+          current = `${part}${sep}`;
+          segments.push({ label: part, path: current });
+          return;
+        }
+        current = isRootPath(current)
+          ? `${current}${part}`
+          : current
+            ? `${current}${sep}${part}`
+            : `${sep}${part}`;
+        segments.push({ label: part, path: current });
+      });
+      if (!windows && segments.length === 0) return [{ label: "/", path: "/" }];
+      return segments;
+    }
+
+    function formatBytes(size) {
+      const value = Number(size);
+      if (!Number.isFinite(value) || value < 0) return "";
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+      return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    /* ----------------------------------- workspace switching + sessions */
+
+    /**
+     * Page-session registry of prepared chat sessions, keyed by workspace path.
+     * Opening the same folder twice reuses the prepared session instead of
+     * starting a second one.
+     */
+    const PREPARED_SESSIONS = new Map();
+
+    function clearPreparedSessions() {
+      PREPARED_SESSIONS.clear();
+    }
+
+    /**
+     * Switch the panel's document workspace to `path` through
+     * `POST /workspace`, then prepare one chat session there.
+     *
+     * Returns a chip description the panel header renders:
+     * - `chat-ready`: the Host returned `dshWorkspaceId` and `startSession`
+     *   exists (or the session was already prepared for this path);
+     * - `workspace-only`: the workspace is ready, but this Host has no
+     *   workspace service, so no chat session could be started;
+     * - `no-harness-workspace`: the Host returned no `dshWorkspaceId`.
+     *
+     * A failed `POST /workspace` throws (the caller reports it); a failed
+     * `startSession` is reported in `warning` and never blocks the editor.
+     */
+    async function prepareWorkspaceSession(options) {
+      const input = options || {};
+      const services = input.services || {};
+      const uiWorkspace =
+        input.uiWorkspace ||
+        services.uiWorkspace ||
+        (input.useBoundServices === false ? undefined : workspaceService());
+      const callWorkspace =
+        input.callWorkspace ||
+        function requestWorkspace(path, create) {
+          return apiClient.workspace(path, create);
+        };
+      const prepared = input.prepared || PREPARED_SESSIONS;
+      const payload = await callWorkspace(input.path, input.create === true);
+      const path = trimTrailingSeparator(
+        (payload && payload.path) || input.path || "",
+      );
+      const chip = {
+        path,
+        folderName: baseNameOf(path) || path,
+        dshWorkspaceId:
+          payload && typeof payload.dshWorkspaceId === "string"
+            ? payload.dshWorkspaceId
+            : "",
+        created: Boolean(payload && payload.created === true),
+        status: "no-harness-workspace",
+        sessionStarted: false,
+        reused: false,
+        warning: null,
+      };
+      if (!chip.dshWorkspaceId) {
+        chip.warning =
+          "The Host did not return a Harness workspace id, so a chat session could not be prepared.";
+        return chip;
+      }
+      const previous = prepared.get(path);
+      if (previous && previous.dshWorkspaceId === chip.dshWorkspaceId) {
+        chip.status = "chat-ready";
+        chip.reused = true;
+        return chip;
+      }
+      if (!uiWorkspace || typeof uiWorkspace.startSession !== "function") {
+        chip.status = "workspace-only";
+        chip.warning =
+          "The workspace is ready, but a chat session could not be started automatically: this Host has no workspace service.";
+        return chip;
+      }
+      try {
+        uiWorkspace.startSession(chip.dshWorkspaceId);
+      } catch (cause) {
+        chip.status = "workspace-only";
+        chip.warning = `The workspace is ready, but starting the chat session failed: ${
+          cause && cause.message ? cause.message : cause
+        }`;
+        return chip;
+      }
+      prepared.set(path, {
+        dshWorkspaceId: chip.dshWorkspaceId,
+        startedAt: Date.now(),
+      });
+      chip.status = "chat-ready";
+      chip.sessionStarted = true;
+      return chip;
+    }
+
+    /** Header text for one prepared-workspace chip. */
+    function sessionChipText(chip) {
+      if (!chip) return "";
+      if (chip.status === "chat-ready")
+        return `Chat ready · ${chip.folderName || chip.path}`;
+      if (chip.status === "workspace-only")
+        return `Workspace ready · ${chip.path}`;
+      return `Workspace · ${chip.path}`;
+    }
+
+    /**
+     * Show the Conversation again. The layout service accepts the registered
+     * main key (`conversation`); null is the same panel on the current Host, so
+     * both are attempted without forcing navigation anywhere else.
+     */
+    function switchToConversation(deps) {
+      const input = deps || {};
+      const services = input.services || {};
+      const layout =
+        input.layout ||
+        services.layout ||
+        (input.useBoundServices === false ? undefined : layoutService());
+      if (!layout || typeof layout.selectPanel !== "function") {
+        return {
+          ok: false,
+          message:
+            "This Host cannot switch the main panel from the editor, so open the chat from the sidebar.",
+        };
+      }
+      try {
+        layout.selectPanel("conversation");
+        return { ok: true, message: "" };
+      } catch (cause) {
+        return {
+          ok: false,
+          message: `The conversation panel could not be opened (${
+            cause && cause.message ? cause.message : cause
+          }); use the sidebar instead.`,
+        };
+      }
+    }
+
+    /**
+     * File → Choose folder…: native OS directory picker, then switch the
+     * document workspace and prepare a chat session there.
+     *
+     * Throws a `HostError` with `fallback: "path"` when this Host has no
+     * picker (or the picker fails); the panel then explains and reveals the
+     * advanced path input instead of blocking the editor.
+     */
+    async function runChooseFolderFlow(options) {
+      const input = options || {};
+      const services = input.services || {};
+      const uiWorkspace =
+        input.uiWorkspace ||
+        services.uiWorkspace ||
+        (input.useBoundServices === false ? undefined : workspaceService());
+      if (!uiWorkspace || typeof uiWorkspace.pickDirectory !== "function") {
+        const error = HostError(
+          "PICKER_UNAVAILABLE",
+          "This Host does not expose the native folder picker. Use the “Advanced: path” input in the File tab instead.",
+        );
+        error.fallback = "path";
+        throw error;
+      }
+      let directory;
+      try {
+        directory = await uiWorkspace.pickDirectory();
+      } catch (cause) {
+        const error = HostError(
+          "PICKER_FAILED",
+          `The folder picker failed (${
+            cause && cause.message ? cause.message : cause
+          }). Use the “Advanced: path” input in the File tab instead.`,
+        );
+        error.fallback = "path";
+        throw error;
+      }
+      if (!directory)
+        return { ok: false, cancelled: true, chip: null, path: "" };
+      const chip = await prepareWorkspaceSession({
+        path: directory,
+        create: false,
+        uiWorkspace,
+        callWorkspace: input.callWorkspace,
+        prepared: input.prepared,
+        useBoundServices: false,
+      });
+      return { ok: true, cancelled: false, path: chip.path, chip };
+    }
+
+    /**
+     * Open a document the folder browser selected (`POST /open-path`), then
+     * switch the document workspace to its folder and prepare a chat session.
+     */
+    async function runOpenDocumentPathFlow(path, options) {
+      const input = options || {};
+      const services = input.services || {};
+      const uiWorkspace =
+        input.uiWorkspace ||
+        services.uiWorkspace ||
+        (input.useBoundServices === false ? undefined : workspaceService());
+      const openPath =
+        input.callOpenPath ||
+        function requestOpenPath(target) {
+          return apiClient.openPath(target);
+        };
+      const opened = await openPath(path);
+      let chip = null;
+      let workspaceError = null;
+      if (opened && opened.directory) {
+        try {
+          chip = await prepareWorkspaceSession({
+            path: opened.directory,
+            create: false,
+            uiWorkspace,
+            callWorkspace: input.callWorkspace,
+            prepared: input.prepared,
+            useBoundServices: false,
+          });
+        } catch (cause) {
+          // The document opened already: report the workspace failure without
+          // discarding it.
+          workspaceError = cause;
+        }
+      }
+      return {
+        ok: true,
+        opened,
+        chip,
+        workspaceError,
+        documentId: (opened && opened.documentId) || "",
+        directory: (opened && opened.directory) || "",
+      };
+    }
+
+    /**
+     * Upload one document through `POST /open` (multipart), switch to the
+     * folder the Host reports and prepare a chat session there.
+     */
+    async function runOpenUploadFlow(file, options) {
+      const input = options || {};
+      const services = input.services || {};
+      const uiWorkspace =
+        input.uiWorkspace ||
+        services.uiWorkspace ||
+        (input.useBoundServices === false ? undefined : workspaceService());
+      const openUpload =
+        input.callOpenUpload ||
+        function requestOpenUpload(picked) {
+          return apiClient.openUpload(picked);
+        };
+      const opened = await openUpload(file);
+      let chip = null;
+      let workspaceError = null;
+      if (opened && opened.directory) {
+        try {
+          chip = await prepareWorkspaceSession({
+            path: opened.directory,
+            create: false,
+            uiWorkspace,
+            callWorkspace: input.callWorkspace,
+            prepared: input.prepared,
+            useBoundServices: false,
+          });
+        } catch (cause) {
+          workspaceError = cause;
+        }
+      }
+      return {
+        ok: true,
+        opened,
+        chip,
+        workspaceError,
+        documentId: (opened && opened.documentId) || "",
+        directory: (opened && opened.directory) || "",
+        title: (opened && opened.title) || "",
+      };
+    }
+
+    /* ------------------------------------------- folder browser helpers */
+
+    function normalizeBrowseEntry(entry) {
+      const data = entry || {};
+      const kind = data.kind === "directory" ? "directory" : "document";
+      return {
+        name: String(data.name || ""),
+        path: String(data.path || ""),
+        kind,
+        importable: kind === "document" ? data.importable === true : false,
+        size: typeof data.size === "number" ? data.size : null,
+        modified: data.modified || null,
+      };
+    }
+
+    /** Turn one `GET /browse?path=` payload into folder-browser dialog state. */
+    function browseDialogState(payload, options) {
+      const data = payload || {};
+      const entries = (Array.isArray(data.entries) ? data.entries : [])
+        .map(normalizeBrowseEntry)
+        .filter((entry) => entry.name && entry.path);
+      entries.sort(function order(left, right) {
+        if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+      return Object.assign(
+        {
+          kind: "browse",
+          path: String(data.path || ""),
+          parent: data.parent || null,
+          roots: (Array.isArray(data.roots) ? data.roots : [])
+            .map((root) => ({
+              label: String((root && root.label) || ""),
+              path: String((root && root.path) || ""),
+            }))
+            .filter((root) => root.label && root.path),
+          entries,
+          truncated: data.truncated === true,
+          loading: false,
+          error: null,
+          newFolder: null,
+        },
+        options || {},
+      );
+    }
+
+    function describeBrowseFailure(cause) {
+      if (isMissingRoute(cause)) {
+        return "This Host does not implement /browse, so the folder browser is unavailable. Use the “Advanced: path” input in the File tab instead.";
+      }
+      return (
+        (cause && cause.message) ||
+        "The folder could not be listed by the Host."
+      );
+    }
+
     /* -------------------------------------------------------- panel state */
 
     function initialState() {
@@ -1894,6 +2501,11 @@ window.__ModuleLoader__.load({
         canUndo: true,
         canRedo: true,
         dialogReturnFocus: null,
+        showLabels: readStoredLabels(),
+        advancedOpen: false,
+        advancedPath: "",
+        browseRoots: [],
+        sessionChip: null,
       };
     }
 
@@ -2040,6 +2652,11 @@ window.__ModuleLoader__.load({
       state.focusMode = opts.focusMode === true;
       state.showPageSeparators = opts.showPageSeparators !== false;
       state.showRail = opts.showRail !== false;
+      state.showLabels = opts.showLabels === true;
+      state.advancedOpen = opts.advancedOpen === true;
+      state.advancedPath = opts.advancedPath || "";
+      state.browseRoots = opts.browseRoots || [];
+      state.sessionChip = opts.sessionChip || null;
       return state;
     }
 
@@ -2213,6 +2830,12 @@ window.__ModuleLoader__.load({
         showPageSeparators: state.showPageSeparators,
         focusMode: state.focusMode,
         showRail: state.showRail && !state.focusMode,
+        showLabels: state.showLabels === true,
+        advancedOpen: state.advancedOpen === true,
+        advancedPath: state.advancedPath || "",
+        browseRoots: state.browseRoots || [],
+        sessionChip: state.sessionChip || null,
+        canPickDirectory: canPickDirectory(),
         dialog: state.dialog,
         selection: state.selection,
         formatting,
@@ -2487,6 +3110,21 @@ window.__ModuleLoader__.load({
       return null;
     }
 
+    /**
+     * Tooltip for one ribbon tool: the reason when disabled, otherwise the
+     * explicit title or label with the editor's keyboard shortcut appended.
+     */
+    function ribbonToolTitle(item, reason, label, ctx) {
+      if (reason) return reason;
+      const custom =
+        typeof item.title === "function" ? item.title(ctx) : item.title;
+      const base = custom || label;
+      const shortcut = SHORTCUTS[item.run];
+      if (shortcut && String(base).indexOf(shortcut) === -1)
+        return `${base} (${shortcut})`;
+      return base;
+    }
+
     function RibbonTool(props) {
       const item = props.item;
       const ctx = props.ctx;
@@ -2498,10 +3136,8 @@ window.__ModuleLoader__.load({
         typeof item.pressed === "function"
           ? Boolean(item.pressed(ctx))
           : undefined;
-      const title =
-        reason ||
-        (typeof item.title === "function" ? item.title(ctx) : item.title) ||
-        label;
+      const title = ribbonToolTitle(item, reason, label, ctx);
+      const showLabel = props.showLabels === true && item.size !== "tiny";
       const className = [
         "dx-tool",
         item.size === "small" ? "dx-tool-small" : "",
@@ -2548,7 +3184,9 @@ window.__ModuleLoader__.load({
             style: { background: item.swatch(ctx) || "transparent" },
           }),
         );
-      if (item.size !== "tiny")
+      // Icon-only by default: the label moves into `title`/`aria-label` and is
+      // rendered as visible text only after View → Show labels.
+      if (showLabel)
         children.push(
           h("span", { key: "label", className: "dx-tool-label" }, label),
         );
@@ -2683,6 +3321,7 @@ window.__ModuleLoader__.load({
     function StyleGallery(props) {
       const ctx = props.ctx;
       const api = props.api;
+      const showLabels = ctx.showLabels === true;
       return h(
         "div",
         { className: "dx-gallery", role: "group", "aria-label": "Styles" },
@@ -2694,19 +3333,23 @@ window.__ModuleLoader__.load({
               : style.available
                 ? null
                 : `This document has no style named "${style.label}".`;
+          // The "Aa" preview stays; the style name moves into the tooltip
+          // unless the user restores labels.
+          const children = [h("b", { key: "preview" }, "Aa")];
+          if (showLabels) children.push(style.label);
           return h(
             "button",
             {
               key: style.id,
               type: "button",
               className: "dx-style-card",
-              title: reason || `Apply the ${style.label} style`,
+              title: reason || `Apply the ${style.label} style (Aa preview)`,
+              "aria-label": `Apply the ${style.label} style`,
               "aria-pressed": ctx.formatting.styleId === style.id,
               disabled: Boolean(reason),
               onClick: () => api.onAction("applyStyle", style.id),
             },
-            h("b", null, "Aa"),
-            style.label,
+            children,
           );
         }),
       );
@@ -2756,6 +3399,7 @@ window.__ModuleLoader__.load({
           item,
           ctx,
           api,
+          showLabels: ctx.showLabels === true,
         });
       });
       return h(
@@ -3354,6 +3998,11 @@ window.__ModuleLoader__.load({
             tool("toggleRail", "sidebar", "Document rail", {
               pressed: () => ctx.showRail,
             }),
+            tool("toggleLabels", "labels", "Show labels", {
+              pressed: () => ctx.showLabels,
+              title:
+                "Show text labels on ribbon buttons (saved in this browser); off by default",
+            }),
           ],
         },
         {
@@ -3583,12 +4232,12 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function FileRibbon(props) {
+    function FileActions(props) {
       const ctx = props.ctx;
       const api = props.api;
       const disabled = ctx.readOnly ? REASONS.readOnly : null;
       const remoteDisabled = ctx.offline ? REASONS.offline : null;
-      const action = (run, label, icon, extra) => {
+      const action = (run, label, icon, extra, ariaLabel) => {
         const reason =
           (extra && extra.reason) ||
           (extra && extra.editing ? disabled : null) ||
@@ -3601,6 +4250,7 @@ window.__ModuleLoader__.load({
             type: "button",
             className: "dx-file-action",
             title: reason || label,
+            "aria-label": ariaLabel || label,
             disabled: Boolean(reason),
             onClick: () => api.onAction(run),
           },
@@ -3608,6 +4258,124 @@ window.__ModuleLoader__.load({
           label,
         );
       };
+      const roots = ctx.browseRoots || [];
+      return h(
+        "div",
+        { className: "dx-file-col", style: { overflowY: "auto" } },
+        h("h4", null, "Document"),
+        h(
+          "div",
+          { className: "dx-file-actions" },
+          action("newDocument", "New document…", "newDoc", {
+            editing: true,
+          }),
+          action("chooseFolder", "Choose folder…", "folder", {
+            remote: true,
+          }),
+          action("openDocument", "Open document…", "device", {
+            remote: true,
+          }),
+          // A real (hidden) file input: the button above opens the native
+          // file dialog and the Host receives the file through POST /open.
+          h("input", {
+            key: "file-input",
+            ref: api.fileInputRef,
+            className: "dx-file-input",
+            type: "file",
+            accept: DOCUMENT_ACCEPT,
+            "aria-label": "Open a document from this device",
+            onChange: api.onFilePicked,
+          }),
+          action("save", "Save", "save", {
+            editing: true,
+            remote: true,
+          }),
+          action("saveAs", "Save as…", "saveAs", {
+            editing: true,
+            remote: true,
+          }),
+          action("refresh", "Refresh list", "refresh", { remote: true }),
+          action("deleteDocument", "Delete document", "trash", {
+            editing: true,
+            remote: true,
+          }),
+        ),
+        h(
+          "details",
+          {
+            className: "dx-advanced",
+            open: ctx.advancedOpen === true,
+            onToggle: (event) =>
+              api.onToggleAdvanced(Boolean(event.currentTarget.open)),
+          },
+          h("summary", null, "Advanced: path"),
+          h(
+            "div",
+            { className: "dx-advanced-body" },
+            h(
+              "label",
+              { className: "dx-field" },
+              "Document path",
+              h("input", {
+                className: "dx-input",
+                type: "text",
+                value: ctx.advancedPath || "",
+                placeholder: "documents/report.docx",
+                "aria-label": "Document path",
+                onChange: (event) => api.onAdvancedPath(event.target.value),
+              }),
+            ),
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn",
+                title: "Open the path typed above",
+                "aria-label": "Open by path",
+                onClick: () => api.onAction("openAdvancedPath"),
+              },
+              "Open by path…",
+            ),
+            roots.length
+              ? h(
+                  "div",
+                  {
+                    className: "dx-roots",
+                    role: "group",
+                    "aria-label": "Browse roots",
+                  },
+                  roots.map((root, index) =>
+                    h(
+                      "button",
+                      {
+                        key: `${root.path}-${index}`,
+                        type: "button",
+                        className: "dx-root-link",
+                        title: `Browse ${root.path}`,
+                        onClick: () => api.onAction("browseRoot", root.path),
+                      },
+                      root.label,
+                    ),
+                  ),
+                )
+              : h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dx-btn",
+                    title: "Ask the Host for the browse roots",
+                    onClick: () => api.onAction("loadBrowseRoots"),
+                  },
+                  "Load roots",
+                ),
+          ),
+        ),
+      );
+    }
+
+    function FileRibbon(props) {
+      const ctx = props.ctx;
+      const api = props.api;
       return h(
         "div",
         {
@@ -3615,37 +4383,12 @@ window.__ModuleLoader__.load({
           id: "dx-ribbon",
           role: "tabpanel",
           "aria-label": "file ribbon",
-          style: { minHeight: 0, alignItems: "stretch", maxHeight: 230 },
+          style: { minHeight: 0, alignItems: "stretch", maxHeight: 320 },
         },
         h(
           "div",
           { className: "dx-file-panels" },
-          h(
-            "div",
-            { className: "dx-file-col" },
-            h("h4", null, "Document"),
-            h(
-              "div",
-              { className: "dx-file-actions" },
-              action("newDocument", "New document…", "newDoc", {
-                editing: true,
-              }),
-              action("openByPath", "Open by path…", "open", { editing: true }),
-              action("save", "Save", "save", {
-                editing: true,
-                remote: true,
-              }),
-              action("saveAs", "Save as…", "saveAs", {
-                editing: true,
-                remote: true,
-              }),
-              action("refresh", "Refresh list", "refresh", { remote: true }),
-              action("deleteDocument", "Delete document", "trash", {
-                editing: true,
-                remote: true,
-              }),
-            ),
-          ),
+          h(FileActions, { ctx, api }),
           h(
             "div",
             { className: "dx-file-col" },
@@ -3713,6 +4456,13 @@ window.__ModuleLoader__.load({
                     style: { color: "var(--dx-danger)" },
                   },
                   "The Host editor API is unavailable; editing stays local.",
+                )
+              : null,
+            ctx.canPickDirectory === false
+              ? h(
+                  "p",
+                  { className: "dx-file-meta" },
+                  "This Host exposes no native folder picker; use “Advanced: path”.",
                 )
               : null,
           ),
@@ -4439,15 +5189,86 @@ window.__ModuleLoader__.load({
       );
     }
 
+    const FOCUSABLE_SELECTOR =
+      "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])";
+
+    /** Keep Tab inside the dialog so keyboard focus never escapes the modal. */
+    function trapDialogFocus(node, event) {
+      if (!node || event.key !== "Tab") return;
+      const focusables = Array.from(node.querySelectorAll(FOCUSABLE_SELECTOR));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && event.target === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && event.target === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    /**
+     * Panel-header chip for the workspace/chat prepared by the last open or
+     * folder choice. It never navigates on its own: "Switch to chat" is the
+     * only navigation and it is user-initiated.
+     */
+    function SessionChip(props) {
+      const chip = props.chip;
+      if (!chip) return null;
+      const status = chip.status || "workspace-only";
+      return h(
+        "div",
+        {
+          className: "dx-sessionbar",
+          role: "status",
+          "aria-live": "polite",
+          "data-status": status,
+        },
+        h(Icon, {
+          name: status === "chat-ready" ? "chat" : "info",
+          size: 14,
+          className: "dx-session-icon",
+        }),
+        h("span", { className: "dx-session-text" }, sessionChipText(chip)),
+        chip.warning
+          ? h("span", { className: "dx-session-warn" }, chip.warning)
+          : null,
+        h("span", { className: "dx-session-spacer" }),
+        status === "chat-ready"
+          ? h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn dx-primary",
+                title: `Open the chat session for ${chip.folderName || chip.path}`,
+                "aria-label": "Switch to chat",
+                onClick: () => props.onSwitch && props.onSwitch(chip),
+              },
+              "Switch to chat",
+            )
+          : null,
+        h(
+          "button",
+          {
+            type: "button",
+            className: "dx-btn",
+            title: "Dismiss this notice",
+            "aria-label": "Dismiss workspace notice",
+            onClick: () => props.onDismiss && props.onDismiss(),
+          },
+          h(Icon, { name: "close", size: 12 }),
+        ),
+      );
+    }
+
     function DialogShell(props) {
       const api = props.api;
       const nodeRef = React.useRef(null);
       React.useEffect(() => {
         const node = nodeRef.current;
         if (!node) return undefined;
-        const focusable = node.querySelector(
-          "input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])",
-        );
+        const focusable = node.querySelector(FOCUSABLE_SELECTOR);
         if (focusable && typeof focusable.focus === "function")
           focusable.focus();
         return undefined;
@@ -4461,13 +5282,15 @@ window.__ModuleLoader__.load({
               event.preventDefault();
               event.stopPropagation();
               api.onDialogClose();
+              return;
             }
+            trapDialogFocus(nodeRef.current, event);
           },
         },
         h(
           "div",
           {
-            className: "dx-dialog",
+            className: props.wide ? "dx-dialog dx-dialog-wide" : "dx-dialog",
             role: "dialog",
             "aria-modal": "true",
             "aria-label": props.title,
@@ -4583,6 +5406,229 @@ window.__ModuleLoader__.load({
       return h("div", { className: "dx-swatches" }, children);
     }
 
+    function browseEntryLabel(entry) {
+      return entry.kind === "directory"
+        ? `Open folder ${entry.name}`
+        : `Open ${entry.name}`;
+    }
+
+    function browseEntryMeta(entry) {
+      if (entry.kind === "directory") return "folder";
+      if (!entry.importable) return "not importable";
+      return formatBytes(entry.size) || "document";
+    }
+
+    /**
+     * In-panel folder browser driven by `GET /browse?path=`. Directories
+     * navigate, importable documents open through `POST /open-path`; the
+     * toolbar offers Up, breadcrumbs, the Host's roots and New folder.
+     */
+    function BrowseDialog(props) {
+      const api = props.api;
+      const dialog = props.dialog || {};
+      const entries = dialog.entries || [];
+      const roots = dialog.roots || [];
+      const crumbs = breadcrumbSegments(dialog.path || "");
+      const newFolder = dialog.newFolder;
+      const newFolderName =
+        typeof newFolder === "string" ? newFolder.trim() : "";
+      const list = dialog.loading
+        ? h(
+            "p",
+            { className: "dx-browse-empty" },
+            "Listing the folder through the Host…",
+          )
+        : entries.length === 0
+          ? h(
+              "p",
+              { className: "dx-browse-empty" },
+              "This folder has no directories or importable documents.",
+            )
+          : h(
+              "div",
+              {
+                className: "dx-browse-list",
+                role: "list",
+                "aria-label": "Folder contents",
+              },
+              entries.map((entry) =>
+                h(
+                  "button",
+                  {
+                    key: entry.path,
+                    type: "button",
+                    className: "dx-browse-item",
+                    role: "listitem",
+                    "aria-label": browseEntryLabel(entry),
+                    title:
+                      entry.kind === "document" && !entry.importable
+                        ? "The Host cannot import this file type."
+                        : entry.path,
+                    disabled: entry.kind === "document" && !entry.importable,
+                    onClick: () =>
+                      api.onAction(
+                        entry.kind === "directory"
+                          ? "browsePath"
+                          : "openBrowseDocument",
+                        entry.path,
+                      ),
+                  },
+                  h(Icon, {
+                    name: entry.kind === "directory" ? "folder" : "page",
+                    size: 14,
+                  }),
+                  h("span", null, entry.name),
+                  h(
+                    "span",
+                    { className: "dx-browse-meta" },
+                    browseEntryMeta(entry),
+                  ),
+                ),
+              ),
+            );
+      return h(DialogShell, {
+        api,
+        wide: true,
+        title: "Open a document",
+        description:
+          "Pick a folder or a document the Host can import. Browsing is read-only; only names and sizes are listed.",
+        submitLabel: "Open this folder",
+        submitDisabled: !dialog.path,
+        submitTitle:
+          "Switch the document workspace to this folder without opening a file",
+        onSubmit: () => api.onAction("openCurrentFolder"),
+        children: h(
+          "div",
+          { className: "dx-browse" },
+          roots.length
+            ? h(
+                "div",
+                {
+                  className: "dx-roots",
+                  role: "group",
+                  "aria-label": "Browse roots",
+                },
+                roots.map((root, index) =>
+                  h(
+                    "button",
+                    {
+                      key: `${root.path}-${index}`,
+                      type: "button",
+                      className: "dx-root-link",
+                      title: `Browse ${root.path}`,
+                      onClick: () => api.onAction("browseRoot", root.path),
+                    },
+                    root.label,
+                  ),
+                ),
+              )
+            : null,
+          h(
+            "div",
+            { className: "dx-browse-bar" },
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn",
+                title: dialog.parent
+                  ? `Go up to ${dialog.parent}`
+                  : "Already at the top of the browsable roots",
+                "aria-label": "Go up one folder",
+                disabled: !dialog.parent,
+                onClick: () => api.onAction("browseUp"),
+              },
+              h(Icon, { name: "up", size: 13 }),
+              "Up",
+            ),
+            h(
+              "div",
+              { className: "dx-breadcrumbs", "aria-label": "Folder path" },
+              crumbs.map((crumb, index) =>
+                h(
+                  "span",
+                  { key: crumb.path, style: { display: "inline-flex" } },
+                  index > 0
+                    ? h(
+                        "span",
+                        { className: "dx-crumb-sep", "aria-hidden": "true" },
+                        "›",
+                      )
+                    : null,
+                  h(
+                    "button",
+                    {
+                      key: "crumb",
+                      type: "button",
+                      className: "dx-crumb",
+                      title: crumb.path,
+                      "aria-current":
+                        index === crumbs.length - 1 ? "page" : undefined,
+                      onClick: () => api.onAction("browsePath", crumb.path),
+                    },
+                    crumb.label,
+                  ),
+                ),
+              ),
+            ),
+            h(
+              "button",
+              {
+                type: "button",
+                className: "dx-btn",
+                title: "Create a new folder here and browse into it",
+                "aria-label": "New folder",
+                onClick: () => api.onAction("newFolderStart"),
+              },
+              h(Icon, { name: "folderPlus", size: 13 }),
+              "New folder",
+            ),
+          ),
+          typeof newFolder === "string"
+            ? h(
+                "div",
+                { className: "dx-newfolder" },
+                h("input", {
+                  className: "dx-input",
+                  type: "text",
+                  value: newFolder,
+                  placeholder: "New folder name",
+                  "aria-label": "New folder name",
+                  onChange: (event) =>
+                    api.updateDialog({ newFolder: event.target.value }),
+                }),
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dx-btn dx-primary",
+                    disabled: !newFolderName,
+                    title: "Create this folder in the Host workspace",
+                    onClick: () => api.onAction("newFolderConfirm"),
+                  },
+                  "Create",
+                ),
+              )
+            : null,
+          dialog.error
+            ? h(
+                "p",
+                { className: "dx-browse-error", role: "alert" },
+                dialog.error,
+              )
+            : null,
+          list,
+          dialog.truncated
+            ? h(
+                "p",
+                { className: "dx-file-meta" },
+                "The Host truncated this listing; open a subfolder to narrow it.",
+              )
+            : null,
+        ),
+      });
+    }
+
     function DialogContent(props) {
       const ctx = props;
       const api = props.api;
@@ -4620,6 +5666,8 @@ window.__ModuleLoader__.load({
               onChange: (value) => api.updateDialog({ path: value }),
             }),
           });
+        case "browse":
+          return h(BrowseDialog, { api, dialog });
         case "saveAs":
           return h(DialogShell, {
             api,
@@ -5102,13 +6150,20 @@ window.__ModuleLoader__.load({
       return h(
         "div",
         {
-          className: "dx-root",
+          className: ctx.showLabels ? "dx-root dx-show-labels" : "dx-root",
           ref: api.rootRef,
           onKeyDown: api.onRootKeyDown,
         },
         styles(),
         h(TitleBar, props),
         h(TabRow, props),
+        ctx.sessionChip
+          ? h(SessionChip, {
+              chip: ctx.sessionChip,
+              onSwitch: () => api.onAction("switchToChat"),
+              onDismiss: () => api.onAction("dismissSessionChip"),
+            })
+          : null,
         h(Ribbon, props),
         ctx.error ? h(ErrorBar, props) : null,
         ctx.notice ? h("div", { className: "dx-notice" }, ctx.notice) : null,
@@ -5145,6 +6200,9 @@ window.__ModuleLoader__.load({
         onDialogClose: noop,
         onDialogSubmit: noop,
         onImagePicked: noop,
+        onFilePicked: noop,
+        onAdvancedPath: noop,
+        onToggleAdvanced: noop,
         onOpenDocument: noop,
         onOpenUrl: noop,
         onSelectionChange: noop,
@@ -5154,6 +6212,7 @@ window.__ModuleLoader__.load({
         onRootKeyDown: noop,
         rootRef: null,
         surfaceRef: null,
+        fileInputRef: null,
       };
     }
 
@@ -5169,6 +6228,7 @@ window.__ModuleLoader__.load({
 
       const rootRef = React.useRef(null);
       const surfaceRef = React.useRef(null);
+      const fileInputRef = React.useRef(null);
       const pendingTextRef = React.useRef(new Map());
       const hostTextRef = React.useRef(new Map());
       const flushTimerRef = React.useRef(null);
@@ -6467,6 +7527,310 @@ window.__ModuleLoader__.load({
         [patch, reportError],
       );
 
+      /* ------------------------------------- workspaces, sessions, pickers */
+
+      const prepareWorkspaceAt = React.useCallback(
+        async (path, create) => {
+          const chip = await prepareWorkspaceSession({
+            path,
+            create,
+            uiWorkspace: workspaceService(),
+            useBoundServices: false,
+          });
+          patch({
+            sessionChip: chip,
+            workspace: chip.path,
+            notice: chip.warning || "",
+            error: null,
+          });
+          await refreshList();
+          return chip;
+        },
+        [patch, refreshList],
+      );
+
+      const loadBrowse = React.useCallback(
+        async (targetPath) => {
+          try {
+            const payload = await apiClient.browse(targetPath || "");
+            patch((current) => ({
+              dialog:
+                current.dialog && current.dialog.kind === "browse"
+                  ? browseDialogState(payload, {
+                      newFolder: current.dialog.newFolder,
+                    })
+                  : current.dialog,
+              browseRoots: payload.roots || current.browseRoots,
+            }));
+            return payload;
+          } catch (cause) {
+            const missing = isMissingRoute(cause);
+            patch((current) => ({
+              dialog:
+                current.dialog && current.dialog.kind === "browse"
+                  ? Object.assign({}, current.dialog, {
+                      loading: false,
+                      error: describeBrowseFailure(cause),
+                    })
+                  : current.dialog,
+              advancedOpen: missing ? true : current.advancedOpen,
+            }));
+            return null;
+          }
+        },
+        [patch],
+      );
+
+      const openBrowseDialog = React.useCallback(
+        async (targetPath) => {
+          patch({
+            dialog: {
+              kind: "browse",
+              path: targetPath || "",
+              parent: null,
+              roots: (stateRef.current && stateRef.current.browseRoots) || [],
+              entries: [],
+              truncated: false,
+              loading: true,
+              error: null,
+              newFolder: null,
+            },
+          });
+          await loadBrowse(targetPath);
+        },
+        [loadBrowse, patch],
+      );
+
+      const loadBrowseRoots = React.useCallback(async () => {
+        try {
+          const payload = await apiClient.browse();
+          patch({ browseRoots: payload.roots || [], advancedOpen: true });
+          return payload;
+        } catch (cause) {
+          patch({
+            advancedOpen: true,
+            notice: describeBrowseFailure(cause),
+          });
+          return null;
+        }
+      }, [patch]);
+
+      const finishOpenedDocument = React.useCallback(
+        async (result) => {
+          patch({ dialog: null, saving: false, error: null });
+          if (result.chip) {
+            patch({
+              sessionChip: result.chip,
+              workspace: result.chip.path,
+              notice: result.chip.warning || "",
+            });
+          } else if (result.workspaceError) {
+            // The document is open on the Host; only the workspace switch
+            // failed, so say that instead of discarding the document.
+            patch({
+              notice: `The document opened, but the workspace could not be switched: ${
+                result.workspaceError.message || result.workspaceError
+              }`,
+            });
+          }
+          await refreshList();
+          if (result.documentId) await loadDocument(result.documentId);
+          else
+            patch({
+              notice:
+                "The Host opened the file but did not return a document id.",
+            });
+        },
+        [loadDocument, patch, refreshList],
+      );
+
+      const chooseFolder = React.useCallback(async () => {
+        let result;
+        try {
+          result = await runChooseFolderFlow({
+            uiWorkspace: workspaceService(),
+            useBoundServices: false,
+          });
+        } catch (cause) {
+          patch({
+            advancedOpen: true,
+            notice:
+              (cause && cause.message) ||
+              "The native folder picker is unavailable on this Host.",
+          });
+          if (!(cause && cause.fallback === "path")) reportError(cause);
+          return;
+        }
+        if (!result || result.cancelled) return;
+        patch({
+          sessionChip: result.chip,
+          workspace: result.path,
+          notice: result.chip.warning || "",
+          error: null,
+        });
+        await refreshList();
+        await openBrowseDialog(result.path);
+      }, [openBrowseDialog, patch, refreshList, reportError]);
+
+      const openUploadedFile = React.useCallback(
+        async (file) => {
+          patch({
+            saving: true,
+            notice: `Opening ${file.name || "the document"}…`,
+          });
+          try {
+            const result = await runOpenUploadFlow(file, {
+              uiWorkspace: workspaceService(),
+              useBoundServices: false,
+            });
+            await finishOpenedDocument(result);
+          } catch (cause) {
+            patch({ saving: false });
+            reportError(cause);
+          }
+        },
+        [finishOpenedDocument, patch, reportError],
+      );
+
+      const openFromBrowse = React.useCallback(
+        async (path) => {
+          patch((previous) => ({
+            saving: true,
+            dialog:
+              previous.dialog && previous.dialog.kind === "browse"
+                ? Object.assign({}, previous.dialog, {
+                    loading: true,
+                    error: null,
+                  })
+                : previous.dialog,
+          }));
+          try {
+            const result = await runOpenDocumentPathFlow(path, {
+              uiWorkspace: workspaceService(),
+              useBoundServices: false,
+            });
+            await finishOpenedDocument(result);
+          } catch (cause) {
+            patch((previous) => ({
+              saving: false,
+              advancedOpen: isMissingRoute(cause)
+                ? true
+                : previous.advancedOpen,
+              dialog:
+                previous.dialog && previous.dialog.kind === "browse"
+                  ? Object.assign({}, previous.dialog, {
+                      loading: false,
+                      error:
+                        (cause && cause.message) ||
+                        "The document could not be opened by the Host.",
+                    })
+                  : previous.dialog,
+            }));
+          }
+        },
+        [finishOpenedDocument, patch],
+      );
+
+      const openCurrentFolder = React.useCallback(async () => {
+        const dialog = stateRef.current.dialog || {};
+        const target = dialog.path;
+        if (!target) return;
+        try {
+          await prepareWorkspaceAt(target, false);
+          patch({ dialog: null });
+        } catch (cause) {
+          patch((previous) => ({
+            advancedOpen: isMissingRoute(cause) ? true : previous.advancedOpen,
+            dialog:
+              previous.dialog && previous.dialog.kind === "browse"
+                ? Object.assign({}, previous.dialog, {
+                    loading: false,
+                    error:
+                      (cause && cause.message) ||
+                      "The workspace could not be switched to this folder.",
+                  })
+                : previous.dialog,
+          }));
+        }
+      }, [patch, prepareWorkspaceAt]);
+
+      const createFolder = React.useCallback(async () => {
+        const dialog = stateRef.current.dialog || {};
+        const name = String(dialog.newFolder || "")
+          .trim()
+          .replace(/[\\/]+/g, "");
+        if (!name) {
+          patch((previous) => ({
+            dialog: Object.assign({}, previous.dialog, {
+              error: "Enter a folder name first.",
+            }),
+          }));
+          return;
+        }
+        const target = joinPath(dialog.path || "", name);
+        try {
+          await prepareWorkspaceAt(target, true);
+          patch((previous) => ({
+            dialog: previous.dialog
+              ? Object.assign({}, previous.dialog, {
+                  newFolder: null,
+                  error: null,
+                })
+              : previous.dialog,
+          }));
+          await loadBrowse(target);
+        } catch (cause) {
+          patch((previous) => ({
+            advancedOpen: isMissingRoute(cause) ? true : previous.advancedOpen,
+            dialog:
+              previous.dialog && previous.dialog.kind === "browse"
+                ? Object.assign({}, previous.dialog, {
+                    loading: false,
+                    error:
+                      (cause && cause.message) ||
+                      "The folder could not be created in the workspace.",
+                  })
+                : previous.dialog,
+          }));
+        }
+      }, [loadBrowse, patch, prepareWorkspaceAt]);
+
+      const switchToChat = React.useCallback(() => {
+        const result = switchToConversation({
+          layout: layoutService(),
+          useBoundServices: false,
+        });
+        if (!result.ok)
+          patch({
+            error: { code: "PANEL_UNAVAILABLE", message: result.message },
+          });
+      }, [patch]);
+
+      const onFilePicked = React.useCallback(
+        (event) => {
+          const target = event && event.target;
+          const file = target && target.files ? target.files[0] : null;
+          // Reset so choosing the same file twice still fires onChange.
+          if (target) target.value = "";
+          if (!file) return;
+          void openUploadedFile(file);
+        },
+        [openUploadedFile],
+      );
+
+      const onAdvancedPath = React.useCallback(
+        (value) => patch({ advancedPath: value }),
+        [patch],
+      );
+
+      const onToggleAdvanced = React.useCallback(
+        (open) => {
+          patch({ advancedOpen: open === true });
+          if (open) void loadBrowseRoots();
+        },
+        [loadBrowseRoots, patch],
+      );
+
       /* -------------------------------------------------------- actions */
 
       const copySelection = React.useCallback(async () => {
@@ -7096,6 +8460,12 @@ window.__ModuleLoader__.load({
             case "toggleRuler":
               patch((previous) => ({ showRuler: !previous.showRuler }));
               return;
+            case "toggleLabels": {
+              const next = !current.showLabels;
+              storeLabels(next);
+              patch({ showLabels: next });
+              return;
+            }
             case "toggleMarks":
               patch((previous) => ({ showMarks: !previous.showMarks }));
               return;
@@ -7186,6 +8556,73 @@ window.__ModuleLoader__.load({
               return;
             case "export":
               await exportDocument(arg);
+              return;
+            case "chooseFolder":
+              await chooseFolder();
+              return;
+            case "openDocument":
+              if (
+                fileInputRef.current &&
+                typeof fileInputRef.current.click === "function"
+              )
+                fileInputRef.current.click();
+              else
+                patch({
+                  advancedOpen: true,
+                  notice:
+                    "This Host cannot open the native file dialog; use “Advanced: path” instead.",
+                });
+              return;
+            case "toggleAdvanced":
+              onToggleAdvanced(!current.advancedOpen);
+              return;
+            case "loadBrowseRoots":
+              await loadBrowseRoots();
+              return;
+            case "browseRoot":
+            case "browsePath":
+              await openBrowseDialog(arg);
+              return;
+            case "browseUp":
+              await openBrowseDialog(
+                (current.dialog && current.dialog.parent) || "",
+              );
+              return;
+            case "openBrowseDocument":
+              await openFromBrowse(arg);
+              return;
+            case "openCurrentFolder":
+              await openCurrentFolder();
+              return;
+            case "newFolderStart":
+              patch((previous) => ({
+                dialog: previous.dialog
+                  ? Object.assign({}, previous.dialog, {
+                      newFolder: "",
+                      error: null,
+                    })
+                  : previous.dialog,
+              }));
+              return;
+            case "newFolderConfirm":
+              await createFolder();
+              return;
+            case "openAdvancedPath": {
+              const advanced = String(current.advancedPath || "").trim();
+              if (!advanced) {
+                patch({
+                  notice: "Type a document path in “Advanced: path” first.",
+                });
+                return;
+              }
+              await openDocumentByPath(advanced);
+              return;
+            }
+            case "switchToChat":
+              switchToChat();
+              return;
+            case "dismissSessionChip":
+              patch({ sessionChip: null });
               return;
             case "createDocument": {
               const dialog = current.dialog || {};
@@ -7398,9 +8835,11 @@ window.__ModuleLoader__.load({
           applyRunPropsToSelection,
           applyStyleById,
           caretPosition,
+          chooseFolder,
           closeDialog,
           copySelection,
           createDocument,
+          createFolder,
           cutSelection,
           deleteCurrentDocument,
           deleteSelectedRange,
@@ -7409,9 +8848,14 @@ window.__ModuleLoader__.load({
           insertBreak,
           insertList,
           isReadOnly,
+          loadBrowseRoots,
           loadDocument,
+          onToggleAdvanced,
+          openBrowseDialog,
+          openCurrentFolder,
           openDialog,
           openDocumentByPath,
+          openFromBrowse,
           pasteSelection,
           patch,
           performOp,
@@ -7428,6 +8872,7 @@ window.__ModuleLoader__.load({
           selectionText,
           setIndent,
           setPageLayout,
+          switchToChat,
           refreshList,
         ],
       );
@@ -7529,10 +8974,15 @@ window.__ModuleLoader__.load({
                                       ? "applyColorConfirm"
                                       : kind === "delete"
                                         ? "confirmDelete"
-                                        : "",
+                                        : kind === "browse"
+                                          ? "openCurrentFolder"
+                                          : "",
             );
           },
           onImagePicked,
+          onFilePicked,
+          onAdvancedPath,
+          onToggleAdvanced,
           onOpenDocument,
           onOpenUrl,
           onSelectionChange: updateSelection,
@@ -7545,6 +8995,7 @@ window.__ModuleLoader__.load({
           onRootKeyDown,
           rootRef,
           surfaceRef,
+          fileInputRef,
         }),
         [
           closeDialog,
@@ -7552,12 +9003,15 @@ window.__ModuleLoader__.load({
           handleInput,
           handlePaste,
           loadDocument,
+          onAdvancedPath,
+          onFilePicked,
           onImagePicked,
           onOpenDocument,
           onOpenUrl,
           onTab,
           onTitleChange,
           onTitleCommit,
+          onToggleAdvanced,
           onToggleRibbon,
           onZoom,
           onRootKeyDown,
@@ -7664,6 +9118,38 @@ window.__ModuleLoader__.load({
       ribbonGroups,
       REQUEST_HEADER: HEADER,
       API_PREFIX: API,
+      LABELS_KEY,
+      SHORTCUTS,
+      DOCUMENT_ACCEPT,
+      readStoredLabels,
+      storeLabels,
+      baseNameOf,
+      joinPath,
+      trimTrailingSeparator,
+      breadcrumbSegments,
+      formatBytes,
+      browseDialogState,
+      describeBrowseFailure,
+      normalizeBrowseEntry,
+      prepareWorkspaceSession,
+      sessionChipText,
+      switchToConversation,
+      runChooseFolderFlow,
+      runOpenDocumentPathFlow,
+      runOpenUploadFlow,
+      PREPARED_SESSIONS,
+      clearPreparedSessions,
+      bindClientContext,
+      clientService,
+      workspaceService,
+      layoutService,
+      canPickDirectory,
+      canStartSession,
+      SessionChip,
+      BrowseDialog,
+      FileRibbon,
+      RibbonTool,
+      ribbonToolTitle,
     };
 
     function DocIcon(props) {
@@ -7695,6 +9181,9 @@ window.__ModuleLoader__.load({
     return {
       inject: ["slots"],
       apply(ctx) {
+        // Keep the Context so the panel can reach the optional Client
+        // services (`uiWorkspace`, `layout`) without requiring them.
+        bindClientContext(ctx);
         ctx.slots.inject("sidebar.panellist", () =>
           ctx.slots.register(
             {

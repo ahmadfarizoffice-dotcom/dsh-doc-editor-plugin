@@ -9,7 +9,8 @@
  */
 import os from "node:os";
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 
 /**
  * The engine bundle sits next to this file in the published plugin. A source
@@ -109,6 +110,254 @@ function resolveWorkspace(config) {
   return path.join(os.homedir(), ".dsh-documents");
 }
 
+/** Folder browsing is read-only and bounded; contents are never read. */
+const BROWSE_ENTRY_LIMIT = 500;
+const BROWSE_SCAN_LIMIT = 5000;
+
+/**
+ * Extensions the folder browser shows as documents even when this build has no
+ * importer for them (PDF, spreadsheet and presentation previews). Whether a
+ * file is *importable* always comes from the format registry, never this list.
+ */
+const DOCUMENT_EXTENSIONS = new Set([
+  "doc",
+  "docm",
+  "docx",
+  "dot",
+  "dotm",
+  "dotx",
+  "gdoc",
+  "htm",
+  "html",
+  "log",
+  "md",
+  "mdown",
+  "mkd",
+  "markdown",
+  "odt",
+  "ott",
+  "pages",
+  "pdf",
+  "potm",
+  "potx",
+  "pptm",
+  "pptx",
+  "rtf",
+  "text",
+  "txt",
+  "xhtml",
+  "xlsm",
+  "xlsx",
+  "xltm",
+  "xltx",
+]);
+
+/** True when `candidate` is `root` itself or inside it (lexical check). */
+function isInsidePath(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+/** Case-insensitive comparison on Windows, exact elsewhere. */
+function samePath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return process.platform === "win32"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
+
+/** Real path when the target exists; the resolved path otherwise. */
+async function canonicalPath(target) {
+  const resolved = path.resolve(target);
+  try {
+    return await realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+/** Lowercased extension without the dot; empty when there is none. */
+function extensionOf(file) {
+  const base = path.basename(file);
+  const index = base.lastIndexOf(".");
+  return index > 0 ? base.slice(index + 1).toLowerCase() : "";
+}
+
+/**
+ * Existing Windows drive roots (`C:\`), probed with `existsSync` so no shell or
+ * subprocess is ever spawned. Empty on other platforms.
+ */
+function driveRoots() {
+  if (process.platform !== "win32") return [];
+  const candidates = [];
+  if (process.env.SystemDrive) candidates.push(process.env.SystemDrive);
+  for (let code = 65; code <= 90; code += 1) {
+    candidates.push(String.fromCharCode(code));
+  }
+  const roots = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const letter = String(candidate)
+      .replace(/[^A-Za-z]/g, "")
+      .toUpperCase();
+    if (!/^[A-Z]$/.test(letter)) continue;
+    const root = `${letter}:\\`;
+    if (seen.has(root) || !existsSync(root)) continue;
+    seen.add(root);
+    roots.push(root);
+  }
+  return roots.sort();
+}
+
+/** The roots `/browse` offers: Home, the document workspace, cwd and drives. */
+function browseRoots(workspaceDir) {
+  const roots = [];
+  const seen = new Set();
+  const add = (label, target) => {
+    const resolved = path.resolve(target);
+    const key =
+      process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    if (seen.has(key)) return;
+    seen.add(key);
+    roots.push({ label, path: resolved });
+  };
+  add("Home", os.homedir());
+  add("Workspace", workspaceDir);
+  add("Working directory", process.cwd());
+  for (const drive of driveRoots()) {
+    add(`Local disk (${drive.replace(/\\$/, "")})`, drive);
+  }
+  return roots;
+}
+
+/** Roots a browse or open target must stay inside. */
+function browsableRoots(workspaceDir) {
+  return Array.from(
+    new Set(
+      [os.homedir(), workspaceDir, process.cwd()].map((entry) =>
+        path.resolve(entry),
+      ),
+    ),
+  );
+}
+
+/**
+ * True when `candidate` is inside Home, the document workspace or the process
+ * cwd. A drive root is accepted only when the caller allows it, which is how
+ * the root listing can show `C:\` without exposing the rest of a drive.
+ */
+async function isBrowsable(
+  workspaceDir,
+  candidate,
+  { allowDriveRoot = false } = {},
+) {
+  const resolved = await canonicalPath(candidate);
+  for (const root of browsableRoots(workspaceDir)) {
+    if (isInsidePath(await canonicalPath(root), resolved)) return true;
+  }
+  return (
+    allowDriveRoot && driveRoots().some((drive) => samePath(drive, resolved))
+  );
+}
+
+/** Resolves a caller-supplied path, or fails with PATH_OUTSIDE_WORKSPACE. */
+async function requireBrowsablePath(workspaceDir, input, options = {}) {
+  if (typeof input !== "string" || !input.trim()) {
+    throw new HttpError("PATH_REQUIRED", "Give an absolute folder path.");
+  }
+  const resolved = await canonicalPath(input.trim());
+  if (!(await isBrowsable(workspaceDir, resolved, options))) {
+    throw new HttpError(
+      "PATH_OUTSIDE_WORKSPACE",
+      "Folder access is limited to Home, the current document workspace and the session working directory.",
+    );
+  }
+  return resolved;
+}
+
+/** Parent for the browser's Up button, or null at a browse boundary. */
+async function browseParent(workspaceDir, resolved) {
+  const parent = path.dirname(resolved);
+  if (samePath(parent, resolved)) return null;
+  return (await isBrowsable(workspaceDir, parent, { allowDriveRoot: true }))
+    ? parent
+    : null;
+}
+
+/** Directory entries first, then by name (numeric-aware, case-insensitive). */
+function compareBrowseEntries(left, right) {
+  const leftDir = left.kind === "directory";
+  const rightDir = right.kind === "directory";
+  if (leftDir !== rightDir) return leftDir ? -1 : 1;
+  return left.name.localeCompare(right.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+/**
+ * Lists one directory: names, kinds, sizes only. A symbolic link that resolves
+ * outside the browse roots is skipped, and an entry whose `stat` fails is
+ * counted as skipped instead of failing the whole listing.
+ */
+async function browseDirectory(workspaceDir, dir, importable) {
+  const dirents = await readdir(dir, { withFileTypes: true });
+  const scanned = dirents.slice(0, BROWSE_SCAN_LIMIT);
+  const entries = [];
+  let skipped = 0;
+  for (const dirent of scanned) {
+    const full = path.join(dir, dirent.name);
+    let info;
+    try {
+      if (dirent.isSymbolicLink()) {
+        const target = await canonicalPath(full);
+        const allowed = await isBrowsable(workspaceDir, target, {
+          allowDriveRoot: true,
+        });
+        if (!allowed) {
+          skipped += 1;
+          continue;
+        }
+      }
+      info = await stat(full);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    const isDirectory = info.isDirectory();
+    const extension = isDirectory ? "" : extensionOf(dirent.name);
+    const canImport = !isDirectory && importable.has(extension);
+    const kind = isDirectory
+      ? "directory"
+      : canImport || DOCUMENT_EXTENSIONS.has(extension)
+        ? "document"
+        : "other";
+    const entry = {
+      name: dirent.name,
+      path: full,
+      kind,
+      importable: canImport,
+    };
+    if (!isDirectory) {
+      entry.size = info.size;
+      entry.modified = info.mtime.toISOString();
+    }
+    entries.push(entry);
+  }
+  entries.sort(compareBrowseEntries);
+  const truncated =
+    dirents.length > scanned.length || entries.length > BROWSE_ENTRY_LIMIT;
+  return {
+    entries: entries.slice(0, BROWSE_ENTRY_LIMIT),
+    truncated,
+    skipped,
+  };
+}
+
 function json(res, status, value) {
   const body = Buffer.from(JSON.stringify(value), "utf8");
   res.writeHead(status, {
@@ -156,6 +405,79 @@ async function readJsonBody(req, limit = BODY_LIMIT) {
   } catch {
     throw new HttpError("INVALID_JSON", "Request body is not valid JSON.");
   }
+}
+
+/** Reads the raw request body, bounded by `limit` bytes. */
+async function readBodyBuffer(req, limit = LARGE_BODY_LIMIT) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > limit) {
+      throw new HttpError(
+        "PAYLOAD_TOO_LARGE",
+        `Request body exceeds the ${Math.round(limit / (1024 * 1024))} MiB limit for this route.`,
+      );
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+/** The multipart boundary, or undefined for a non-multipart request. */
+function multipartBoundary(req) {
+  const type = String(req.headers?.["content-type"] ?? "");
+  if (!/^multipart\/form-data/i.test(type)) return undefined;
+  const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(type);
+  return match ? (match[1] ?? match[2] ?? "").trim() || undefined : undefined;
+}
+
+/**
+ * Extracts the first file part of a multipart body. The Documents page uploads
+ * exactly one document, so the parser stays deliberately small: it walks the
+ * boundary markers, reads the part headers and keeps that part's bytes.
+ */
+function firstFilePart(buffer, boundary) {
+  const marker = Buffer.from(`--${boundary}`);
+  const separator = Buffer.from("\r\n\r\n");
+  let cursor = buffer.indexOf(marker);
+  while (cursor !== -1) {
+    const start = cursor + marker.length;
+    // `--` right after the marker ends the body.
+    if (buffer.subarray(start, start + 2).toString("latin1") === "--") break;
+    const headersStart = start + 2; // CRLF after the boundary line
+    const headersEnd = buffer.indexOf(separator, headersStart);
+    if (headersEnd === -1) break;
+    const headers = buffer
+      .subarray(headersStart, headersEnd)
+      .toString("latin1");
+    const bodyStart = headersEnd + separator.length;
+    const next = buffer.indexOf(marker, bodyStart);
+    if (next === -1) break;
+    const bodyEnd = next - 2; // CRLF before the next boundary
+    const disposition = /content-disposition:([^\r\n]+)/i.exec(headers)?.[1];
+    if (disposition) {
+      const name = /filename="([^"]*)"/i.exec(disposition)?.[1];
+      if (name !== undefined) {
+        return {
+          filename: name,
+          data: buffer.subarray(bodyStart, Math.max(bodyStart, bodyEnd)),
+        };
+      }
+    }
+    cursor = next;
+  }
+  return undefined;
+}
+
+/** Keeps an uploaded filename a single, harmless path segment. */
+function safeUploadName(name) {
+  const base = path
+    .basename(String(name ?? ""))
+    .replace(/[^\w .-]+/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  return base || "upload";
 }
 
 function safeId(value) {
@@ -695,26 +1017,114 @@ function capabilities() {
 }
 
 export function apply(ctx, config = {}) {
-  const workspaceDir = resolveWorkspace(config);
+  const initialWorkspace = resolveWorkspace(config);
   const readOnly =
     config?.readOnly === true || process.env.DSH_DOC_READ_ONLY === "1";
   const toolNames =
     Array.isArray(config?.tools) && config.tools.length > 0
       ? config.tools
       : DEFAULT_TOOLS;
-  const extraRoot = path.resolve(process.cwd());
-  const allowedReadRoots = Array.from(new Set([workspaceDir, extraRoot]));
+  const cwdRoot = path.resolve(process.cwd());
+  const homeRoot = path.resolve(os.homedir());
 
-  const service = new DocumentService({
-    workspaceRoot: workspaceDir,
-    allowedReadRoots,
+  /** Engine options for one document workspace root. */
+  const engineOptions = (root) => ({
+    workspaceRoot: root,
+    // Reads may reach the roots the folder browser shows; writes stay inside
+    // that service's workspace root.
+    allowedReadRoots: Array.from(new Set([root, cwdRoot, homeRoot])),
     readOnly,
-    auditPath: path.join(workspaceDir, "audit.log"),
+    auditPath: path.join(root, "audit.log"),
   });
-  const ready = service.init().then(async () => {
+
+  /**
+   * The active document workspace. `POST /workspace` replaces it with a new
+   * service; the previous one is retired (not closed) so an open dirty
+   * document keeps its model and stays readable for the rest of the process.
+   */
+  let workspaceDir = initialWorkspace;
+  let service = new DocumentService(engineOptions(workspaceDir));
+  let ready = service.init().then(async () => {
     await mkdir(workspaceDir, { recursive: true });
     return service;
   });
+  const retired = [];
+
+  /** Awaits initialization and returns the service routes should use now. */
+  async function active() {
+    await ready;
+    return service;
+  }
+
+  /** The service that holds `documentId`: the active one, then retired ones. */
+  function serviceFor(documentId) {
+    try {
+      service.session(documentId);
+      return service;
+    } catch {
+      // Not in the active workspace; look at the ones it replaced.
+    }
+    for (const previous of retired) {
+      try {
+        previous.session(documentId);
+        return previous;
+      } catch {
+        // Not open there either.
+      }
+    }
+    return service;
+  }
+
+  function allServices() {
+    return [service, ...retired];
+  }
+
+  /** Importable extensions reported by this build's format registry. */
+  let importExtensions;
+  function importableExtensions(svc) {
+    if (!importExtensions) {
+      importExtensions = svc
+        .listFormats()
+        .then((listed) => {
+          const extensions = Array.isArray(listed?.import) ? listed.import : [];
+          return new Set(extensions.map((ext) => String(ext).toLowerCase()));
+        })
+        .catch(() => {
+          importExtensions = undefined;
+          return new Set(["docx", "dotx", "docm"]);
+        });
+    }
+    return importExtensions;
+  }
+
+  /** Side-list rows for every open document, including retired workspaces. */
+  function listDocuments() {
+    const rows = [];
+    for (const svc of allServices()) {
+      for (const session of svc.sessions_()) {
+        let words;
+        try {
+          words = svc.metadata(session.id).stats?.words;
+        } catch {
+          words = undefined;
+        }
+        rows.push({
+          id: session.id,
+          title: session.document.metadata.title ?? "Untitled document",
+          dirty: session.dirty,
+          format: session.sourceFormat ?? "docx",
+          words,
+          modified: session.document.metadata.modified,
+          sections: session.document.sections.length,
+          blocks: session.document.sections.reduce(
+            (sum, section) => sum + section.blocks.length,
+            0,
+          ),
+        });
+      }
+    }
+    return rows;
+  }
 
   const manifest = buildToolManifest();
   const byName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
@@ -741,7 +1151,13 @@ export function apply(ctx, config = {}) {
         timeoutMs: 120_000,
         async execute(args) {
           await ready;
-          const result = await invokeTool(service, name, args ?? {});
+          const input = args ?? {};
+          // A document opened before a workspace switch lives in a retired
+          // service; tools must keep reaching it.
+          const documentId =
+            typeof input.documentId === "string" ? input.documentId : "";
+          const target = documentId ? serviceFor(documentId) : await active();
+          const result = await invokeTool(target, name, input);
           if (result.ok === false) {
             const detail = result.error;
             throw new Error(
@@ -808,55 +1224,243 @@ export function apply(ctx, config = {}) {
             }
 
             await ready;
-            const body =
-              method === "POST"
-                ? await readJsonBody(
-                    req,
-                    LARGE_BODY_ROUTES.has(route)
-                      ? LARGE_BODY_LIMIT
-                      : BODY_LIMIT,
-                  )
-                : undefined;
+            // Snapshot the active workspace/service so one request always talks
+            // to the same engine even if another request switches workspaces.
+            const activeRoot = workspaceDir;
+            const svc = service;
 
-            if (method === "GET" && route === "/list") {
-              const documents = service.sessions_().map((session) => {
-                let words;
-                try {
-                  words = service.metadata(session.id).stats?.words;
-                } catch {
-                  words = undefined;
+            let body;
+            let upload;
+            if (method === "POST") {
+              const boundary = multipartBoundary(req);
+              if (boundary && route === "/open") {
+                // Raw upload: the Host saves the copy inside the workspace.
+                upload = firstFilePart(
+                  await readBodyBuffer(req, LARGE_BODY_LIMIT),
+                  boundary,
+                );
+                if (!upload) {
+                  throw new HttpError(
+                    "INVALID_ARGUMENT",
+                    "The upload had no file part.",
+                  );
                 }
-                return {
-                  id: session.id,
-                  title: session.document.metadata.title ?? "Untitled document",
-                  dirty: session.dirty,
-                  format: session.sourceFormat ?? "docx",
-                  words,
-                  modified: session.document.metadata.modified,
-                  sections: session.document.sections.length,
-                  blocks: session.document.sections.reduce(
-                    (sum, section) => sum + section.blocks.length,
-                    0,
-                  ),
-                };
+                body = {};
+              } else {
+                body = await readJsonBody(
+                  req,
+                  LARGE_BODY_ROUTES.has(route) ? LARGE_BODY_LIMIT : BODY_LIMIT,
+                );
+              }
+            }
+
+            if (method === "GET" && route === "/browse") {
+              const roots = browseRoots(activeRoot);
+              const requested = url.searchParams.get("path");
+              if (requested === null || requested.trim() === "") {
+                json(res, 200, { ok: true, roots });
+                return;
+              }
+              const target = await requireBrowsablePath(activeRoot, requested, {
+                allowDriveRoot: true,
               });
+              const info = await stat(target).catch(() => undefined);
+              if (!info) {
+                throw new HttpError("FILE_NOT_FOUND", "Folder not found.");
+              }
+              if (!info.isDirectory()) {
+                throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+              }
+              const importable = await importableExtensions(svc);
+              const listing = await browseDirectory(
+                activeRoot,
+                target,
+                importable,
+              );
               json(res, 200, {
                 ok: true,
-                workspace: workspaceDir,
+                path: target,
+                parent: await browseParent(activeRoot, target),
+                roots,
+                entries: listing.entries,
+                truncated: listing.truncated,
+                skipped: listing.skipped,
+              });
+              return;
+            }
+
+            if (method === "GET" && route === "/workspace") {
+              json(res, 200, {
+                ok: true,
+                path: activeRoot,
                 readOnly,
-                documents,
+                documents: listDocuments(),
+              });
+              return;
+            }
+
+            if (method === "POST" && route === "/workspace") {
+              const create = body.create === true;
+              // Creating a folder is a filesystem write, so read-only refuses
+              // it. Switching to an existing folder is not a mutation.
+              if (create && readOnly) {
+                throw new HttpError(
+                  "READ_ONLY_MODE",
+                  "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
+                );
+              }
+              const target = await requireBrowsablePath(activeRoot, body.path);
+              const info = await stat(target).catch(() => undefined);
+              if (info && !info.isDirectory()) {
+                throw new HttpError("NOT_A_DIRECTORY", "Not a folder.");
+              }
+              let created = false;
+              if (!info) {
+                if (!create) {
+                  throw new HttpError(
+                    "DIRECTORY_NOT_FOUND",
+                    "Folder not found; pass create:true to make it.",
+                  );
+                }
+                await mkdir(target, { recursive: true });
+                created = true;
+              }
+
+              if (!samePath(target, workspaceDir)) {
+                // Build and initialize the replacement before switching so a
+                // failed init cannot leave the panel without a service.
+                const next = new DocumentService(engineOptions(target));
+                await next.init();
+                retired.push(service);
+                service = next;
+                workspaceDir = target;
+                ready = Promise.resolve(next);
+              }
+
+              let dshWorkspaceId;
+              let warning;
+              const registry = ctx.get("workspaceRegistry");
+              if (
+                registry &&
+                (typeof registry.resolveByPath === "function" ||
+                  typeof registry.create === "function")
+              ) {
+                try {
+                  let workspace =
+                    typeof registry.resolveByPath === "function"
+                      ? await registry.resolveByPath(target)
+                      : undefined;
+                  if (!workspace && typeof registry.create === "function") {
+                    workspace = await registry.create(
+                      target,
+                      path.basename(target) || target,
+                    );
+                  }
+                  if (workspace && typeof workspace.id === "string") {
+                    dshWorkspaceId = workspace.id;
+                  }
+                } catch {
+                  warning = "workspace-registry-failed";
+                }
+              } else {
+                warning = "workspace-registry-unavailable";
+              }
+
+              json(res, 200, {
+                ok: true,
+                path: target,
+                created,
+                ...(dshWorkspaceId ? { dshWorkspaceId } : {}),
+                ...(warning ? { warning } : {}),
+              });
+              return;
+            }
+
+            if (method === "POST" && route === "/open-path") {
+              const target = await requireBrowsablePath(activeRoot, body.path);
+              const info = await stat(target).catch(() => undefined);
+              if (!info) {
+                throw new HttpError("FILE_NOT_FOUND", "File not found.");
+              }
+              if (!info.isFile()) {
+                throw new HttpError("NOT_A_FILE", "Not a file.");
+              }
+              const importable = await importableExtensions(svc);
+              if (!importable.has(extensionOf(target))) {
+                throw new HttpError(
+                  "FORMAT_UNSUPPORTED",
+                  "That file format cannot be imported by this build.",
+                );
+              }
+              // Re-opening a file that is already open reuses its session, so the
+              // document list never shows the same file twice.
+              const alreadyOpen = svc
+                .sessions_()
+                .find(
+                  (session) =>
+                    session.filePath !== undefined &&
+                    path.resolve(session.filePath) === target,
+                );
+              if (alreadyOpen) {
+                json(res, 200, {
+                  ok: true,
+                  documentId: alreadyOpen.id,
+                  path: target,
+                  directory: path.dirname(target),
+                  title:
+                    alreadyOpen.document.metadata.title ??
+                    path.basename(target).replace(/\.[^.]+$/, ""),
+                  warnings: [],
+                  reused: true,
+                });
+                return;
+              }
+              const opened = await svc.openDocument(target);
+              const fallbackTitle = path
+                .basename(target)
+                .replace(/\.[^.]+$/, "");
+              if (!opened.document?.metadata?.title) {
+                // Give imported files their file name as the document title.
+                try {
+                  svc.setDocumentMetadata(opened.documentId, {
+                    title: fallbackTitle,
+                  });
+                } catch {
+                  // The title is cosmetic; never fail the open for it.
+                }
+              }
+              json(res, 200, {
+                ok: true,
+                documentId: opened.documentId,
+                path: target,
+                directory: path.dirname(target),
+                title:
+                  svc.session(opened.documentId).document.metadata.title ??
+                  fallbackTitle,
+                warnings: opened.warnings ?? [],
+              });
+              return;
+            }
+
+            if (method === "GET" && route === "/list") {
+              json(res, 200, {
+                ok: true,
+                workspace: activeRoot,
+                readOnly,
+                documents: listDocuments(),
               });
               return;
             }
 
             if (method === "GET" && route === "/bootstrap") {
               const documentId = safeId(url.searchParams.get("id"));
-              const session = service.session(documentId);
-              const layout = service.layout(session);
-              const meta = service.metadata(documentId);
+              const owner = serviceFor(documentId);
+              const session = owner.session(documentId);
+              const layout = owner.layout(session);
+              const meta = owner.metadata(documentId);
               let formats = { import: [], export: [] };
               try {
-                const listed = await service.listFormats();
+                const listed = await owner.listFormats();
                 formats = {
                   import: Array.isArray(listed?.import) ? listed.import : [],
                   export: Array.isArray(listed?.export) ? listed.export : [],
@@ -866,7 +1470,7 @@ export function apply(ctx, config = {}) {
               }
               json(res, 200, {
                 ok: true,
-                workspace: workspaceDir,
+                workspace: activeRoot,
                 readOnly,
                 formats,
                 documentId,
@@ -878,7 +1482,7 @@ export function apply(ctx, config = {}) {
                 blockPages: blockPages(session.document, layout),
                 pageCount: layout.pageCount,
                 stats: meta.stats,
-                outline: service.getOutline(documentId),
+                outline: owner.getOutline(documentId),
                 capabilities: capabilities(),
               });
               return;
@@ -893,7 +1497,7 @@ export function apply(ctx, config = {}) {
                   "The q search parameter is required.",
                 );
               }
-              const found = service.search(documentId, query, {
+              const found = serviceFor(documentId).search(documentId, query, {
                 regex: queryFlag(url.searchParams, "regex"),
                 caseSensitive: queryFlag(url.searchParams, "caseSensitive"),
                 includePages: true,
@@ -908,26 +1512,27 @@ export function apply(ctx, config = {}) {
 
             if (method === "POST" && route === "/op") {
               const documentId = safeId(body.id);
+              const owner = serviceFor(documentId);
               try {
                 const name = requireOperation(body.op);
                 const result = await applyOperation(
-                  service,
+                  owner,
                   documentId,
                   name,
                   body.args,
-                  workspaceDir,
+                  owner.workspace.root,
                 );
                 if (HISTORY_OPS.has(name)) {
                   json(res, 200, {
                     ok: true,
-                    ...documentSnapshot(service, documentId),
-                    document: service.session(documentId).document,
+                    ...documentSnapshot(owner, documentId),
+                    document: owner.session(documentId).document,
                   });
                   return;
                 }
                 json(res, 200, {
                   ok: true,
-                  ...documentSnapshot(service, documentId),
+                  ...documentSnapshot(owner, documentId),
                   result: result ?? null,
                 });
               } catch (error) {
@@ -942,6 +1547,7 @@ export function apply(ctx, config = {}) {
 
             if (method === "POST" && route === "/ops") {
               const documentId = safeId(body.id);
+              const owner = serviceFor(documentId);
               if (!Array.isArray(body.ops) || body.ops.length === 0) {
                 throw new HttpError(
                   "INVALID_ARGUMENT",
@@ -961,11 +1567,11 @@ export function apply(ctx, config = {}) {
                   }
                   const name = requireOperation(entry.op);
                   result = await applyOperation(
-                    service,
+                    owner,
                     documentId,
                     name,
                     entry.args,
-                    workspaceDir,
+                    owner.workspace.root,
                   );
                   if (HISTORY_OPS.has(name)) history = true;
                   applied += 1;
@@ -981,10 +1587,10 @@ export function apply(ctx, config = {}) {
               json(res, 200, {
                 ok: true,
                 applied,
-                ...documentSnapshot(service, documentId),
+                ...documentSnapshot(owner, documentId),
                 result: result ?? null,
                 ...(history
-                  ? { document: service.session(documentId).document }
+                  ? { document: owner.session(documentId).document }
                   : {}),
               });
               return;
@@ -992,38 +1598,40 @@ export function apply(ctx, config = {}) {
 
             if (method === "POST" && route === "/save") {
               const documentId = safeId(body.id);
-              const target = workspacePath(workspaceDir, body.path);
-              const saved = await service.saveDocument(documentId, target);
+              const owner = serviceFor(documentId);
+              const target = workspacePath(owner.workspace.root, body.path);
+              const saved = await owner.saveDocument(documentId, target);
               json(res, 200, {
                 ok: true,
                 path: saved.path,
                 bytes: saved.bytes,
-                revision: service.session(documentId).revision,
+                revision: owner.session(documentId).revision,
               });
               return;
             }
 
             if (method === "POST" && route === "/saveAs") {
               const documentId = safeId(body.id);
-              const target = workspacePath(workspaceDir, body.path);
+              const owner = serviceFor(documentId);
+              const target = workspacePath(owner.workspace.root, body.path);
               if (!target) {
                 throw new HttpError(
                   "PATH_REQUIRED",
                   "Give a path for the saved copy.",
                 );
               }
-              const saved = await service.saveDocumentAs(documentId, target);
+              const saved = await owner.saveDocumentAs(documentId, target);
               json(res, 200, {
                 ok: true,
                 path: saved.path,
                 bytes: saved.bytes,
-                revision: service.session(documentId).revision,
+                revision: owner.session(documentId).revision,
               });
               return;
             }
 
             if (method === "POST" && route === "/create") {
-              const created = await service.createDocument({
+              const created = await svc.createDocument({
                 title:
                   typeof body.title === "string" && body.title.trim()
                     ? body.title.trim()
@@ -1038,17 +1646,49 @@ export function apply(ctx, config = {}) {
             }
 
             if (method === "POST" && route === "/open") {
-              if (typeof body.path !== "string" || !body.path.trim()) {
-                throw new HttpError(
-                  "PATH_REQUIRED",
-                  "Give a path to a document inside the workspace.",
+              // Two shapes: an uploaded file (multipart, saved into the
+              // workspace) and the original `{ path }` JSON form.
+              let sourcePath;
+              if (upload) {
+                if (readOnly) {
+                  throw new HttpError(
+                    "READ_ONLY_MODE",
+                    "The Documents panel is read-only (DSH_DOC_READ_ONLY=1).",
+                  );
+                }
+                const name = safeUploadName(upload.filename);
+                if (!(await importableExtensions(svc)).has(extensionOf(name))) {
+                  throw new HttpError(
+                    "FORMAT_UNSUPPORTED",
+                    "That file format cannot be imported by this build.",
+                  );
+                }
+                const directory = path.join(activeRoot, "imports");
+                await mkdir(directory, { recursive: true });
+                sourcePath = path.join(
+                  directory,
+                  `${Date.now().toString(36)}-${name}`,
                 );
+                await writeFile(sourcePath, upload.data);
+              } else {
+                if (typeof body.path !== "string" || !body.path.trim()) {
+                  throw new HttpError(
+                    "PATH_REQUIRED",
+                    "Give a path to a document inside the workspace.",
+                  );
+                }
+                sourcePath = workspacePath(activeRoot, body.path);
               }
-              const opened = await service.openDocument(body.path.trim());
+              const opened = await svc.openDocument(sourcePath);
               json(res, 200, {
                 ok: true,
                 documentId: opened.documentId,
-                warnings: opened.warnings,
+                path: path.resolve(sourcePath),
+                directory: path.dirname(path.resolve(sourcePath)),
+                title:
+                  svc.session(opened.documentId).document.metadata.title ??
+                  path.basename(sourcePath).replace(/\.[^.]+$/, ""),
+                warnings: opened.warnings ?? [],
                 report: opened.report,
                 compatibility: opened.compatibility,
               });
@@ -1057,10 +1697,11 @@ export function apply(ctx, config = {}) {
 
             if (method === "GET" && route === "/document") {
               const documentId = safeId(url.searchParams.get("id"));
-              const session = service.session(documentId);
-              const metadata = service.metadata(documentId);
-              const outline = service.getOutline(documentId);
-              const text = service.getText(documentId).text;
+              const owner = serviceFor(documentId);
+              const session = owner.session(documentId);
+              const metadata = owner.metadata(documentId);
+              const outline = owner.getOutline(documentId);
+              const text = owner.getText(documentId).text;
               json(res, 200, {
                 ok: true,
                 metadata,
@@ -1070,7 +1711,7 @@ export function apply(ctx, config = {}) {
                     ? `${text.slice(0, 6000)}\n\n[Text truncated by the Documents panel]`
                     : text,
                 truncated: text.length > 6000,
-                layout: service.getPageInfo(documentId),
+                layout: owner.getPageInfo(documentId),
                 sourceFormat: session.sourceFormat ?? "docx",
               });
               return;
@@ -1102,10 +1743,11 @@ export function apply(ctx, config = {}) {
                 });
                 return;
               }
+              const owner = serviceFor(documentId);
               const exported =
                 format === "pdf"
-                  ? await service.exportPdf(documentId)
-                  : await service.exportDocument(documentId, format);
+                  ? await owner.exportPdf(documentId)
+                  : await owner.exportDocument(documentId, format);
               const bytes = Buffer.from(exported.dataBase64 ?? "", "base64");
               const types = {
                 docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1119,7 +1761,7 @@ export function apply(ctx, config = {}) {
                 rtf: "application/rtf",
               };
               const title = (
-                service.metadata(documentId).metadata?.title ?? documentId
+                owner.metadata(documentId).metadata?.title ?? documentId
               )
                 .replace(/[^\w .-]+/g, "_")
                 .slice(0, 80);
@@ -1135,10 +1777,11 @@ export function apply(ctx, config = {}) {
 
             if (method === "POST" && route === "/delete") {
               const documentId = safeId(body.id);
-              await service
+              const owner = serviceFor(documentId);
+              await owner
                 .closeDocument(documentId, { discardUnsaved: true })
                 .catch(() => undefined);
-              await service.deleteDocument(documentId);
+              await owner.deleteDocument(documentId);
               json(res, 200, { ok: true });
               return;
             }

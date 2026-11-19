@@ -67,6 +67,19 @@ preview:
   (Home: Undo, Clipboard, Font, Paragraph, Styles, Editing; Insert: Pages,
   Tables, Illustrations, Links, Header & Footer, Text, Symbols; and so on), and
   the ribbon collapses with the chevron.
+- **Compact, icon-only commands**: buttons show only their icon and reveal the
+  command name and shortcut in a hover tooltip (`Bold (Ctrl+B)`). **View → Show
+  labels** restores text labels for anyone who prefers them, and the choice is
+  remembered.
+- **Native pickers instead of typing paths**: **File → Choose folder…** opens the
+  operating system's folder dialog (macOS Finder / Windows Explorer) and then an
+  in-panel browser with breadcrumbs, roots, folders and only the documents the
+  Host can import; **File → Open document…** opens the system file dialog.
+  Opening a file **switches the document workspace to that file's folder and
+  prepares a Harness workspace and a new chat session there**, with a
+  _Chat ready · <folder>_ chip in the panel; **Switch to chat** jumps to that
+  session. A path field remains under _Advanced: path_ when no picker is
+  available.
 - **Edit by clicking into the page**: type in any paragraph or table cell,
   press Enter to split a paragraph, Backspace at the start to merge with the
   previous one, select text and use Bold/Italic/Underline, font family/size,
