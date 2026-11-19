@@ -4530,8 +4530,8 @@ window.__ModuleLoader__.load({
         const value = currentHeight();
         let next = null;
         let reset = false;
-        if (event.key === "ArrowUp") next = value + RIBBON_KEYBOARD_STEP;
-        else if (event.key === "ArrowDown") next = value - RIBBON_KEYBOARD_STEP;
+        if (event.key === "ArrowDown") next = value + RIBBON_KEYBOARD_STEP;
+        else if (event.key === "ArrowUp") next = value - RIBBON_KEYBOARD_STEP;
         else if (event.key === "Home") next = min;
         else if (event.key === "End") next = max;
         else if (

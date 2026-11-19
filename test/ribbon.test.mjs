@@ -648,3 +648,17 @@ test("the File tab offers Open file… next to the device and folder pickers", (
   assert.ok(empty.includes(">Open file…<"));
   assert.ok(empty.includes(">Open by path<"));
 });
+
+test("keyboard resize follows the drag direction (down grows, up shrinks)", () => {
+  const source = readFileSync(clientPath, "utf8");
+  assert.match(
+    source,
+    /event\.key === "ArrowDown"\) next = value \+ RIBBON_KEYBOARD_STEP/,
+    "ArrowDown grows the ribbon like dragging the bottom edge down",
+  );
+  assert.match(
+    source,
+    /event\.key === "ArrowUp"\) next = value - RIBBON_KEYBOARD_STEP/,
+    "ArrowUp shrinks the ribbon",
+  );
+});
