@@ -1186,3 +1186,56 @@ test("workspace preparation is honest when the Host lacks services or ids", asyn
     { label: "me", path: "C:\\Users\\me" },
   ]);
 });
+
+test("connectWorkspace prepares the chat without navigating away", async () => {
+  __test.bindClientContext(null);
+  __test.clearPreparedSessions();
+  const directory = "C:\\dsh-anywhere-test";
+  const calls = [];
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (target) => {
+    const payload = String(target).includes("/open-path")
+      ? {
+          ok: true,
+          documentId: "doc-9",
+          path: `${directory}\\Outside report.docx`,
+          directory,
+          title: "Outside report",
+          warnings: [],
+        }
+      : { ok: true, path: directory, created: false, dshWorkspaceId: "ws-9" };
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => payload,
+    };
+  };
+  const uiWorkspace = {
+    connectWorkspace: async (workspaceId) => {
+      calls.push({ kind: "connectWorkspace", workspaceId });
+      return "session-9";
+    },
+    startSession: (workspaceId) =>
+      calls.push({ kind: "startSession", workspaceId }),
+  };
+  try {
+    const result = await __test.runOpenDocumentPathFlow(
+      `${directory}\\Outside report.docx`,
+      { uiWorkspace, useBoundServices: false },
+    );
+    assert.equal(result.chip.status, "chat-ready");
+    assert.equal(result.chip.sessionId, "session-9");
+    assert.equal(result.chip.sessionStarted, true);
+    const kinds = calls.map((call) => call.kind);
+    assert.deepEqual(kinds, ["connectWorkspace"]);
+    assert.ok(
+      !kinds.includes("startSession"),
+      "startSession must not be used when connectWorkspace exists",
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    __test.clearPreparedSessions();
+    __test.bindClientContext(null);
+  }
+});

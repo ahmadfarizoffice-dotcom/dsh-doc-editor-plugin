@@ -2267,22 +2267,38 @@ window.__ModuleLoader__.load({
         return chip;
       }
       if (!uiWorkspace || typeof uiWorkspace.startSession !== "function") {
-        chip.status = "workspace-only";
-        chip.warning =
-          "The workspace is ready, but a chat session could not be started automatically: this Host has no workspace service.";
-        return chip;
+        const canConnect =
+          uiWorkspace && typeof uiWorkspace.connectWorkspace === "function";
+        if (!canConnect) {
+          chip.status = "workspace-only";
+          chip.warning =
+            "The workspace is ready, but a chat session could not be started automatically: this Host has no workspace service.";
+          return chip;
+        }
       }
       try {
-        uiWorkspace.startSession(chip.dshWorkspaceId);
+        if (typeof uiWorkspace.connectWorkspace === "function") {
+          // connectWorkspace resolves (and reuses) the blank Session for this
+          // Workspace WITHOUT navigating away from the Documents panel, so the
+          // document the user just opened stays on screen. "Switch to chat"
+          // opens it on demand.
+          const sessionId = await uiWorkspace.connectWorkspace(
+            chip.dshWorkspaceId,
+          );
+          if (sessionId) chip.sessionId = String(sessionId);
+        } else {
+          uiWorkspace.startSession(chip.dshWorkspaceId);
+        }
       } catch (cause) {
         chip.status = "workspace-only";
-        chip.warning = `The workspace is ready, but starting the chat session failed: ${
+        chip.warning = `The workspace is ready, but preparing the chat session failed: ${
           cause && cause.message ? cause.message : cause
         }`;
         return chip;
       }
       prepared.set(path, {
         dshWorkspaceId: chip.dshWorkspaceId,
+        sessionId: chip.sessionId,
         startedAt: Date.now(),
       });
       chip.status = "chat-ready";
@@ -8063,6 +8079,34 @@ window.__ModuleLoader__.load({
       }, [loadBrowse, patch, prepareWorkspaceAt]);
 
       const switchToChat = React.useCallback(() => {
+        const chip = stateRef.current.sessionChip;
+        const service = workspaceService();
+        try {
+          // Opening the prepared Session is a real navigation: do it only when
+          // the user presses "Switch to chat".
+          if (
+            chip &&
+            chip.sessionId &&
+            service &&
+            typeof service.openSession === "function"
+          ) {
+            service.openSession(chip.sessionId);
+            return;
+          }
+          if (
+            chip &&
+            chip.dshWorkspaceId &&
+            service &&
+            typeof service.openWorkspace === "function"
+          ) {
+            void Promise.resolve(
+              service.openWorkspace(chip.dshWorkspaceId),
+            ).catch(() => undefined);
+            return;
+          }
+        } catch {
+          // Fall through to the layout switch below.
+        }
         const result = switchToConversation({
           layout: layoutService(),
           useBoundServices: false,
