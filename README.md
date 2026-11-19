@@ -38,7 +38,9 @@ plugin_manager action: install_bundle target: github:ahmadfarizoffice-dotcom/dsh
 Both forms are the same Git package. If the page reports
 `failedAt: "spec-host"` (“connection to github.com timed out”), the Harness’s
 pre-install reachability check failed before pnpm ran; retry, or paste the
-`github:` form, which skips that pre-check on this release.
+`github:` form, which skips that pre-check on this release. A spec pinned to a
+commit (`…#<sha>`) can trip the same pre-check; install the branch spec and
+update by removing and reinstalling.
 
 Installation runs `pnpm` against the profile, so pnpm must be on `PATH` (the
 Harness launcher usually supplies it). With HMR the bundle activates
