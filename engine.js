@@ -3578,8 +3578,8 @@ var require_utils = __commonJS({
       var result = transform[inputType][outputType](input);
       return result;
     };
-    exports.resolve = function(path3) {
-      var parts = path3.split("/");
+    exports.resolve = function(path4) {
+      var parts = path4.split("/");
       var result = [];
       for (var index = 0; index < parts.length; index++) {
         var part = parts[index];
@@ -8787,7 +8787,7 @@ var require_inflate2 = __commonJS({
       var chunkSize = this.options.chunkSize;
       var dictionary = this.options.dictionary;
       var status, _mode;
-      var next_out_utf8, tail, utf8str;
+      var next_out_utf8, tail2, utf8str;
       var allowBufError = false;
       if (this.ended) {
         return false;
@@ -8825,12 +8825,12 @@ var require_inflate2 = __commonJS({
           if (strm.avail_out === 0 || status === c.Z_STREAM_END || strm.avail_in === 0 && (_mode === c.Z_FINISH || _mode === c.Z_SYNC_FLUSH)) {
             if (this.options.to === "string") {
               next_out_utf8 = strings.utf8border(strm.output, strm.next_out);
-              tail = strm.next_out - next_out_utf8;
+              tail2 = strm.next_out - next_out_utf8;
               utf8str = strings.buf2string(strm.output, next_out_utf8);
-              strm.next_out = tail;
-              strm.avail_out = chunkSize - tail;
-              if (tail) {
-                utils.arraySet(strm.output, strm.output, next_out_utf8, tail, 0);
+              strm.next_out = tail2;
+              strm.avail_out = chunkSize - tail2;
+              if (tail2) {
+                utils.arraySet(strm.output, strm.output, next_out_utf8, tail2, 0);
               }
               this.onData(utf8str);
             } else {
@@ -9440,18 +9440,18 @@ var require_object = __commonJS({
       var object = new ZipObject(name, zipObjectContent, o);
       this.files[name] = object;
     };
-    var parentFolder = function(path3) {
-      if (path3.slice(-1) === "/") {
-        path3 = path3.substring(0, path3.length - 1);
+    var parentFolder = function(path4) {
+      if (path4.slice(-1) === "/") {
+        path4 = path4.substring(0, path4.length - 1);
       }
-      var lastSlash = path3.lastIndexOf("/");
-      return lastSlash > 0 ? path3.substring(0, lastSlash) : "";
+      var lastSlash = path4.lastIndexOf("/");
+      return lastSlash > 0 ? path4.substring(0, lastSlash) : "";
     };
-    var forceTrailingSlash = function(path3) {
-      if (path3.slice(-1) !== "/") {
-        path3 += "/";
+    var forceTrailingSlash = function(path4) {
+      if (path4.slice(-1) !== "/") {
+        path4 += "/";
       }
-      return path3;
+      return path4;
     };
     var folderAdd = function(name, createFolders) {
       createFolders = typeof createFolders !== "undefined" ? createFolders : defaults.createFolders;
@@ -12072,10 +12072,10 @@ var require_dom = __commonJS({
             while (child) {
               var next = child.nextSibling;
               if (next !== null && next.nodeType === TEXT_NODE && child.nodeType === TEXT_NODE) {
-                var tail = [];
+                var tail2 = [];
                 var sibling = next;
                 while (sibling !== null && sibling.nodeType === TEXT_NODE) {
-                  tail.push(sibling.data);
+                  tail2.push(sibling.data);
                   sibling = sibling.nextSibling;
                 }
                 var removed = child.nextSibling;
@@ -12092,7 +12092,7 @@ var require_dom = __commonJS({
                 } else {
                   node.lastChild = child;
                 }
-                child.appendData(tail.join(""));
+                child.appendData(tail2.join(""));
                 _onUpdateChild(node.ownerDocument, node);
                 child = sibling;
               } else {
@@ -150786,12 +150786,12 @@ var require_decode = __commonJS({
       }
       nbytes = br.bit_end_pos_ - br.bit_pos_ >> 3;
       if (br_pos + nbytes > BrotliBitReader.IBUF_MASK) {
-        var tail = BrotliBitReader.IBUF_MASK + 1 - br_pos;
-        for (var x = 0; x < tail; x++)
+        var tail2 = BrotliBitReader.IBUF_MASK + 1 - br_pos;
+        for (var x = 0; x < tail2; x++)
           ringbuffer[rb_pos + x] = br.buf_[br_pos + x];
-        nbytes -= tail;
-        rb_pos += tail;
-        len -= tail;
+        nbytes -= tail2;
+        rb_pos += tail2;
+        len -= tail2;
         br_pos = 0;
       }
       for (var x = 0; x < nbytes; x++)
@@ -157201,9 +157201,9 @@ var init_module2 = __esm({
             let res = [];
             let endCodes = cmap.endCode.toArray();
             for (let i = 0; i < endCodes.length; i++) {
-              let tail = endCodes[i] + 1;
+              let tail2 = endCodes[i] + 1;
               let start = cmap.startCode.get(i);
-              res.push(...(0, $12727730ddfc8bfe$export$d02631cccf789723)(start, tail));
+              res.push(...(0, $12727730ddfc8bfe$export$d02631cccf789723)(start, tail2));
             }
             return res;
           }
@@ -160695,16 +160695,16 @@ var init_module2 = __esm({
       * @return {Path}
       */
       mapPoints(fn) {
-        let path3 = new _$f43aec954cdfdf21$export$2e2bcd8739ae039();
+        let path4 = new _$f43aec954cdfdf21$export$2e2bcd8739ae039();
         for (let c of this.commands) {
           let args = [];
           for (let i = 0; i < c.args.length; i += 2) {
             let [x, y] = fn(c.args[i], c.args[i + 1]);
             args.push(x, y);
           }
-          path3[c.command](...args);
+          path4[c.command](...args);
         }
-        return path3;
+        return path4;
       }
       /**
       * Transforms the path by the given matrix.
@@ -161397,7 +161397,7 @@ var init_module2 = __esm({
       // Converts contours to a Path object that can be rendered
       _getPath() {
         let contours = this._getContours();
-        let path3 = new (0, $f43aec954cdfdf21$export$2e2bcd8739ae039)();
+        let path4 = new (0, $f43aec954cdfdf21$export$2e2bcd8739ae039)();
         for (let i = 0; i < contours.length; i++) {
           let contour = contours[i];
           let firstPt = contour[0];
@@ -161413,26 +161413,26 @@ var init_module2 = __esm({
               firstPt = new $69aac16029968692$export$baf26146a414f24a(false, false, (firstPt.x + lastPt.x) / 2, (firstPt.y + lastPt.y) / 2);
             var curvePt = firstPt;
           }
-          path3.moveTo(firstPt.x, firstPt.y);
+          path4.moveTo(firstPt.x, firstPt.y);
           for (let j = start; j < contour.length; j++) {
             let pt2 = contour[j];
             let prevPt = j === 0 ? firstPt : contour[j - 1];
-            if (prevPt.onCurve && pt2.onCurve) path3.lineTo(pt2.x, pt2.y);
+            if (prevPt.onCurve && pt2.onCurve) path4.lineTo(pt2.x, pt2.y);
             else if (prevPt.onCurve && !pt2.onCurve) var curvePt = pt2;
             else if (!prevPt.onCurve && !pt2.onCurve) {
               let midX = (prevPt.x + pt2.x) / 2;
               let midY = (prevPt.y + pt2.y) / 2;
-              path3.quadraticCurveTo(prevPt.x, prevPt.y, midX, midY);
+              path4.quadraticCurveTo(prevPt.x, prevPt.y, midX, midY);
               var curvePt = pt2;
             } else if (!prevPt.onCurve && pt2.onCurve) {
-              path3.quadraticCurveTo(curvePt.x, curvePt.y, pt2.x, pt2.y);
+              path4.quadraticCurveTo(curvePt.x, curvePt.y, pt2.x, pt2.y);
               var curvePt = null;
             } else throw new Error("Unknown TTF path state");
           }
-          if (curvePt) path3.quadraticCurveTo(curvePt.x, curvePt.y, firstPt.x, firstPt.y);
-          path3.closePath();
+          if (curvePt) path4.quadraticCurveTo(curvePt.x, curvePt.y, firstPt.x, firstPt.y);
+          path4.closePath();
         }
-        return path3;
+        return path4;
       }
       constructor(...args) {
         super(...args);
@@ -161455,7 +161455,7 @@ var init_module2 = __esm({
         let str = cff.topDict.CharStrings[this.id];
         let end = str.offset + str.length;
         stream2.pos = str.offset;
-        let path3 = new (0, $f43aec954cdfdf21$export$2e2bcd8739ae039)();
+        let path4 = new (0, $f43aec954cdfdf21$export$2e2bcd8739ae039)();
         let stack = [];
         let trans = [];
         let width = null;
@@ -161483,8 +161483,8 @@ var init_module2 = __esm({
           return stack.length = 0;
         }
         function moveTo(x2, y2) {
-          if (open) path3.closePath();
-          path3.moveTo(x2, y2);
+          if (open) path4.closePath();
+          path4.moveTo(x2, y2);
           open = true;
         }
         let parse2 = function() {
@@ -161511,7 +161511,7 @@ var init_module2 = __esm({
                   while (stack.length >= 2) {
                     x += stack.shift();
                     y += stack.shift();
-                    path3.lineTo(x, y);
+                    path4.lineTo(x, y);
                   }
                   break;
                 case 6:
@@ -161520,7 +161520,7 @@ var init_module2 = __esm({
                   while (stack.length >= 1) {
                     if (phase) x += stack.shift();
                     else y += stack.shift();
-                    path3.lineTo(x, y);
+                    path4.lineTo(x, y);
                     phase = !phase;
                   }
                   break;
@@ -161532,7 +161532,7 @@ var init_module2 = __esm({
                     c2y = c1y + stack.shift();
                     x = c2x + stack.shift();
                     y = c2y + stack.shift();
-                    path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                    path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                   }
                   break;
                 case 10:
@@ -161556,7 +161556,7 @@ var init_module2 = __esm({
                   if (cff.version >= 2) break;
                   if (stack.length > 0) checkWidth();
                   if (open) {
-                    path3.closePath();
+                    path4.closePath();
                     open = false;
                   }
                   break;
@@ -161604,17 +161604,17 @@ var init_module2 = __esm({
                     c2y = c1y + stack.shift();
                     x = c2x + stack.shift();
                     y = c2y + stack.shift();
-                    path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                    path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                   }
                   x += stack.shift();
                   y += stack.shift();
-                  path3.lineTo(x, y);
+                  path4.lineTo(x, y);
                   break;
                 case 25:
                   while (stack.length >= 8) {
                     x += stack.shift();
                     y += stack.shift();
-                    path3.lineTo(x, y);
+                    path4.lineTo(x, y);
                   }
                   c1x = x + stack.shift();
                   c1y = y + stack.shift();
@@ -161622,7 +161622,7 @@ var init_module2 = __esm({
                   c2y = c1y + stack.shift();
                   x = c2x + stack.shift();
                   y = c2y + stack.shift();
-                  path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                  path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                   break;
                 case 26:
                   if (stack.length % 2) x += stack.shift();
@@ -161633,7 +161633,7 @@ var init_module2 = __esm({
                     c2y = c1y + stack.shift();
                     x = c2x;
                     y = c2y + stack.shift();
-                    path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                    path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                   }
                   break;
                 case 27:
@@ -161645,7 +161645,7 @@ var init_module2 = __esm({
                     c2y = c1y + stack.shift();
                     x = c2x + stack.shift();
                     y = c2y;
-                    path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                    path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                   }
                   break;
                 case 28:
@@ -161684,7 +161684,7 @@ var init_module2 = __esm({
                       x = c2x + stack.shift();
                       y = c2y + (stack.length === 1 ? stack.shift() : 0);
                     }
-                    path3.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+                    path4.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
                     phase = !phase;
                   }
                   break;
@@ -161810,8 +161810,8 @@ var init_module2 = __esm({
                       c6y = c5y;
                       x = c6x;
                       y = c6y;
-                      path3.bezierCurveTo(c1x, c1y, c2x, c2y, c3x, c3y);
-                      path3.bezierCurveTo(c4x, c4y, c5x, c5y, c6x, c6y);
+                      path4.bezierCurveTo(c1x, c1y, c2x, c2y, c3x, c3y);
+                      path4.bezierCurveTo(c4x, c4y, c5x, c5y, c6x, c6y);
                       break;
                     case 35:
                       pts = [];
@@ -161820,8 +161820,8 @@ var init_module2 = __esm({
                         y += stack.shift();
                         pts.push(x, y);
                       }
-                      path3.bezierCurveTo(...pts.slice(0, 6));
-                      path3.bezierCurveTo(...pts.slice(6));
+                      path4.bezierCurveTo(...pts.slice(0, 6));
+                      path4.bezierCurveTo(...pts.slice(6));
                       stack.shift();
                       break;
                     case 36:
@@ -161839,8 +161839,8 @@ var init_module2 = __esm({
                       c6y = c5y;
                       x = c6x;
                       y = c6y;
-                      path3.bezierCurveTo(c1x, c1y, c2x, c2y, c3x, c3y);
-                      path3.bezierCurveTo(c4x, c4y, c5x, c5y, c6x, c6y);
+                      path4.bezierCurveTo(c1x, c1y, c2x, c2y, c3x, c3y);
+                      path4.bezierCurveTo(c4x, c4y, c5x, c5y, c6x, c6y);
                       break;
                     case 37:
                       let startx = x;
@@ -161859,8 +161859,8 @@ var init_module2 = __esm({
                         y += stack.shift();
                       }
                       pts.push(x, y);
-                      path3.bezierCurveTo(...pts.slice(0, 6));
-                      path3.bezierCurveTo(...pts.slice(6));
+                      path4.bezierCurveTo(...pts.slice(0, 6));
+                      path4.bezierCurveTo(...pts.slice(6));
                       break;
                     default:
                       throw new Error(`Unknown op: 12 ${op}`);
@@ -161880,8 +161880,8 @@ var init_module2 = __esm({
           }
         };
         parse2();
-        if (open) path3.closePath();
-        return path3;
+        if (open) path4.closePath();
+        return path4;
       }
       constructor(...args) {
         super(...args);
@@ -162341,7 +162341,7 @@ var init_module2 = __esm({
       yPoints: new ArrayT($807e58506be70005$var$Point, 0)
     });
     $807e58506be70005$export$2e2bcd8739ae039 = class {
-      encodeSimple(path3, instructions = []) {
+      encodeSimple(path4, instructions = []) {
         let endPtsOfContours = [];
         let xPoints = [];
         let yPoints = [];
@@ -162349,14 +162349,14 @@ var init_module2 = __esm({
         let same = 0;
         let lastX = 0, lastY = 0, lastFlag = 0;
         let pointCount = 0;
-        for (let i = 0; i < path3.commands.length; i++) {
-          let c = path3.commands[i];
+        for (let i = 0; i < path4.commands.length; i++) {
+          let c = path4.commands[i];
           for (let j = 0; j < c.args.length; j += 2) {
             let x = c.args[j];
             let y = c.args[j + 1];
             let flag = 0;
             if (c.command === "quadraticCurveTo" && j === 2) {
-              let next = path3.commands[i + 1];
+              let next = path4.commands[i + 1];
               if (next && next.command === "quadraticCurveTo") {
                 let midX = (lastX + next.args[0]) / 2;
                 let midY = (lastY + next.args[1]) / 2;
@@ -162383,8 +162383,8 @@ var init_module2 = __esm({
           }
           if (c.command === "closePath") endPtsOfContours.push(pointCount - 1);
         }
-        if (path3.commands.length > 1 && path3.commands[path3.commands.length - 1].command !== "closePath") endPtsOfContours.push(pointCount - 1);
-        let bbox = path3.bbox;
+        if (path4.commands.length > 1 && path4.commands[path4.commands.length - 1].command !== "closePath") endPtsOfContours.push(pointCount - 1);
+        let bbox = path4.bbox;
         let glyf = {
           numberOfContours: endPtsOfContours.length,
           xMin: bbox.minX,
@@ -162398,10 +162398,10 @@ var init_module2 = __esm({
           yPoints
         };
         let size = $807e58506be70005$var$Glyf.size(glyf);
-        let tail = 4 - size % 4;
-        let stream2 = new EncodeStream(size + tail);
+        let tail2 = 4 - size % 4;
+        let stream2 = new EncodeStream(size + tail2);
         $807e58506be70005$var$Glyf.encode(stream2, glyf);
-        if (tail !== 0) stream2.fill(0, tail);
+        if (tail2 !== 0) stream2.fill(0, tail2);
         return stream2.buffer;
       }
       _encodePoint(value, last2, points, flag, shortFlag, sameFlag) {
@@ -162491,7 +162491,7 @@ var init_module2 = __esm({
         for (let gid of this.glyphs) {
           this.charstrings.push(this.cff.getCharString(gid));
           let glyph = this.font.getGlyph(gid);
-          let path3 = glyph.path;
+          let path4 = glyph.path;
           for (let subr in glyph._usedGsubrs) gsubrs[subr] = true;
         }
         this.gsubrs = this.subsetSubrs(this.cff.globalSubrIndex, gsubrs);
@@ -162529,7 +162529,7 @@ var init_module2 = __esm({
           used_fds[fd] = true;
           topDict.FDSelect.fds.push(fd_select[fd]);
           let glyph = this.font.getGlyph(gid);
-          let path3 = glyph.path;
+          let path4 = glyph.path;
           for (let subr in glyph._usedSubrs) used_subrs[fd_select[fd]][subr] = true;
         }
         for (let i = 0; i < topDict.FDArray.length; i++) {
@@ -162546,7 +162546,7 @@ var init_module2 = __esm({
         let used_subrs = {};
         for (let gid of this.glyphs) {
           let glyph = this.font.getGlyph(gid);
-          let path3 = glyph.path;
+          let path4 = glyph.path;
           for (let subr in glyph._usedSubrs) used_subrs[subr] = true;
         }
         let privateDict = Object.assign({}, this.cff.topDict.Private);
@@ -164909,17 +164909,17 @@ var init_png_js = __esm({
   "node_modules/.pnpm/png-js@2.0.0/node_modules/png-js/lib/png-js.js"() {
     inflate = inflate$1;
     PNG = class _PNG {
-      static decode(path3, fn) {
+      static decode(path4, fn) {
         {
-          return fs.readFile(path3, function(err, file) {
+          return fs.readFile(path4, function(err, file) {
             const png = new _PNG(file);
             return png.decode((pixels) => fn(pixels));
           });
         }
       }
-      static load(path3) {
+      static load(path4) {
         {
-          const file = fs.readFileSync(path3);
+          const file = fs.readFileSync(path4);
           return new _PNG(file);
         }
       }
@@ -165207,7 +165207,7 @@ var init_png_js = __esm({
 import { createRequire } from "module";
 import stream from "stream";
 import zlib$1 from "zlib";
-import { statSync, readFileSync } from "fs";
+import { statSync as statSync2, readFileSync } from "fs";
 function PDFNumber(n) {
   const rounded = Math.fround(n);
   if (rounded <= n) return rounded;
@@ -168354,15 +168354,15 @@ var init_pdfkit_node = __esm({
       }
       return [i - 1, number2];
     };
-    parse = function(path3) {
+    parse = function(path4) {
       const pathData = [];
       let command = null;
       let args = [];
       let argsCount = 0;
       let canHaveComma = false;
       let hadComma = false;
-      for (let i = 0; i < path3.length; i += 1) {
-        const c = path3.charAt(i);
+      for (let i = 0; i < path4.length; i += 1) {
+        const c = path4.charAt(i);
         if (isWsp(c)) {
           continue;
         }
@@ -168407,11 +168407,11 @@ var init_pdfkit_node = __esm({
           const position = args.length;
           if (position === 0 || position === 1) {
             if (c !== "+" && c !== "-") {
-              [newCursor, number2] = readNumber(path3, i);
+              [newCursor, number2] = readNumber(path4, i);
             }
           }
           if (position === 2 || position === 5 || position === 6) {
-            [newCursor, number2] = readNumber(path3, i);
+            [newCursor, number2] = readNumber(path4, i);
           }
           if (position === 3 || position === 4) {
             if (c === "0") {
@@ -168422,7 +168422,7 @@ var init_pdfkit_node = __esm({
             }
           }
         } else {
-          [newCursor, number2] = readNumber(path3, i);
+          [newCursor, number2] = readNumber(path4, i);
         }
         if (number2 == null) {
           return pathData;
@@ -168678,8 +168678,8 @@ var init_pdfkit_node = __esm({
       return [a00 * x1 + a01 * y1, a10 * x1 + a11 * y1, a00 * x2 + a01 * y2, a10 * x2 + a11 * y2, a00 * x3 + a01 * y3, a10 * x3 + a11 * y3];
     };
     SVGPath = class {
-      static apply(doc, path3) {
-        const commands = parse(path3);
+      static apply(doc, path4) {
+        const commands = parse(path4);
         apply(commands, doc);
       }
     };
@@ -168864,8 +168864,8 @@ var init_pdfkit_node = __esm({
         }
         return this.closePath();
       },
-      path(path3) {
-        SVGPath.apply(this, path3);
+      path(path4) {
+        SVGPath.apply(this, path4);
         return this;
       },
       _windingRule(rule) {
@@ -168964,26 +168964,26 @@ var init_pdfkit_node = __esm({
       }
     };
     registeredFiles = /* @__PURE__ */ new Map();
-    toNativePath = (path3) => typeof path3 === "string" && path3.startsWith("file:") ? new URL(path3) : path3;
+    toNativePath = (path4) => typeof path4 === "string" && path4.startsWith("file:") ? new URL(path4) : path4;
     fs2 = {
-      readFileSync(path3) {
-        if (registeredFiles.has(path3)) {
-          return registeredFiles.get(path3).data;
+      readFileSync(path4) {
+        if (registeredFiles.has(path4)) {
+          return registeredFiles.get(path4).data;
         }
-        return readFileSync(toNativePath(path3));
+        return readFileSync(toNativePath(path4));
       },
-      statSync(path3) {
-        if (registeredFiles.has(path3)) {
+      statSync(path4) {
+        if (registeredFiles.has(path4)) {
           const {
             birthtime,
             ctime
-          } = registeredFiles.get(path3);
+          } = registeredFiles.get(path4);
           return {
             birthtime: new Date(birthtime),
             ctime: new Date(ctime)
           };
         }
-        return statSync(toNativePath(path3));
+        return statSync2(toNativePath(path4));
       }
     };
     WIN_ANSI_MAP = {
@@ -172628,7 +172628,7 @@ var init_render = __esm({
 });
 
 // packages/core/dist/service/service.js
-import path2 from "node:path";
+import path3 from "node:path";
 
 // packages/core/dist/model/edit.js
 init_access();
@@ -172685,6 +172685,12 @@ function trackMark(doc, kind, previous) {
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
+function isHighSurrogate(code2) {
+  return code2 >= 55296 && code2 <= 56319;
+}
+function isLowSurrogate(code2) {
+  return code2 >= 56320 && code2 <= 57343;
+}
 function inlineLength(inline2) {
   switch (inline2.type) {
     case "text":
@@ -172711,7 +172717,10 @@ function ensureBoundary(paragraph2, position) {
   if (inline2.type !== "text") {
     return position.offset > 0 ? index + 1 : index;
   }
-  const offset = clamp(position.offset, 0, inline2.text.length);
+  let offset = clamp(position.offset, 0, inline2.text.length);
+  if (offset > 0 && offset < inline2.text.length && isHighSurrogate(inline2.text.charCodeAt(offset - 1)) && isLowSurrogate(inline2.text.charCodeAt(offset))) {
+    offset -= 1;
+  }
   if (offset <= 0)
     return index;
   if (offset >= inline2.text.length)
@@ -172769,7 +172778,7 @@ function insertText(doc, position, text2, options = {}) {
   };
   if (segments.length > 1) {
     const tailIndex = boundary + firstRuns.length;
-    const tail = paragraph2.inlines.splice(tailIndex);
+    const tail2 = paragraph2.inlines.splice(tailIndex);
     let previous = paragraph2;
     for (let index = 1; index < segments.length; index += 1) {
       const isLast = index === segments.length - 1;
@@ -172780,7 +172789,7 @@ function insertText(doc, position, text2, options = {}) {
         id: newId(doc, "p"),
         style: paragraph2.style,
         props: structuredClone(paragraph2.props),
-        inlines: isLast ? [...runs, ...tail] : runs,
+        inlines: isLast ? [...runs, ...tail2] : runs,
         revision: paragraph2.revision
       };
       insertParagraphAfter(doc, previous, created);
@@ -173835,9 +173844,9 @@ function insertSectionBreak(doc, at, options = {}) {
   const section = doc.sections[at.sectionIndex];
   if (!section)
     throw new Error(`Unknown section: ${at.sectionIndex}`);
-  const tail = section.blocks.splice(at.blockIndex);
-  if (tail.length === 0) {
-    tail.push({
+  const tail2 = section.blocks.splice(at.blockIndex);
+  if (tail2.length === 0) {
+    tail2.push({
       type: "paragraph",
       id: newId(doc, "p"),
       style: "Normal",
@@ -173847,7 +173856,7 @@ function insertSectionBreak(doc, at, options = {}) {
   }
   const created = {
     id: newId(doc, "s"),
-    blocks: tail,
+    blocks: tail2,
     breakBefore: options.type ?? "nextPage",
     titlePage: section.titlePage,
     evenAndOdd: section.evenAndOdd,
@@ -173866,14 +173875,72 @@ function insertSectionBreak(doc, at, options = {}) {
   doc.metadata.modified = (/* @__PURE__ */ new Date()).toISOString();
   return { sectionIndex: at.sectionIndex + 1 };
 }
+function rekeyBlocks(doc, blocks) {
+  for (const block2 of blocks) {
+    block2.id = newId(doc, block2.type === "table" ? "tbl" : block2.type === "toc" ? "toc" : "p");
+    if (block2.type === "table") {
+      for (const row of block2.rows) {
+        row.id = newId(doc, "row");
+        for (const cell of row.cells) {
+          cell.id = newId(doc, "cell");
+          rekeyBlocks(doc, cell.blocks);
+        }
+      }
+    }
+  }
+}
 function rekeyHeaderFooters(doc, section) {
   for (const set of [section.headers, section.footers]) {
     for (const variant of ["default", "first", "even"]) {
       const part = set[variant];
-      if (part)
-        part.id = newId(doc, "hf");
+      if (!part)
+        continue;
+      part.id = newId(doc, "hf");
+      rekeyBlocks(doc, part.blocks);
     }
   }
+}
+function hasUniqueStructuralIds(doc) {
+  const seen = /* @__PURE__ */ new Set();
+  let unique = true;
+  const walk = (blocks) => {
+    for (const block2 of blocks) {
+      if (seen.has(block2.id))
+        unique = false;
+      seen.add(block2.id);
+      if (block2.type === "table") {
+        for (const row of block2.rows) {
+          if (seen.has(row.id))
+            unique = false;
+          seen.add(row.id);
+          for (const cell of row.cells) {
+            if (seen.has(cell.id))
+              unique = false;
+            seen.add(cell.id);
+            walk(cell.blocks);
+          }
+        }
+      }
+    }
+  };
+  for (const section of doc.sections) {
+    if (seen.has(section.id))
+      unique = false;
+    seen.add(section.id);
+    walk(section.blocks);
+    for (const set of [section.headers, section.footers]) {
+      for (const variant of ["default", "first", "even"]) {
+        const part = set[variant];
+        if (!part)
+          continue;
+        if (seen.has(part.id))
+          unique = false;
+        seen.add(part.id);
+        walk(part.blocks);
+      }
+    }
+  }
+  return unique;
 }
 function setHeaderFooter(doc, sectionIndex, target) {
   const section = doc.sections[sectionIndex];
@@ -174180,32 +174247,70 @@ init_query();
 // packages/core/dist/docx/package.js
 var import_jszip = __toESM(require_lib3(), 1);
 import { createHash } from "node:crypto";
+
+// packages/core/dist/formats/types.js
+var FormatError = class extends Error {
+  code;
+  constructor(code2, message) {
+    super(message);
+    this.name = "FormatError";
+    this.code = code2;
+  }
+};
+function isFormatError(error) {
+  return error instanceof FormatError;
+}
+
+// packages/core/dist/docx/package.js
 var MAX_PART_BYTES = 256 * 1024 * 1024;
-async function readPackage(bytes) {
+function packageLabel(fileName) {
+  return fileName ? `"${fileName}"` : "the document";
+}
+async function readPackage(bytes, options = {}) {
   const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   const digest = createHash("sha256").update(buffer).digest("hex");
+  const label = packageLabel(options.fileName);
   const isOle = buffer.length >= 8 && buffer.readUInt32BE(0) === 3503231456;
   if (isOle) {
     return { parts: /* @__PURE__ */ new Map(), digest, isEncrypted: true };
   }
-  const zip = await import_jszip.default.loadAsync(buffer, { checkCRC32: false });
+  if (buffer.length < 22 || buffer.readUInt32LE(0) !== 67324752) {
+    throw new FormatError("FORMAT_CORRUPT", `${label} is not a DOCX/OOXML ZIP package (the archive is empty, truncated or has no ZIP header)`);
+  }
+  let zip;
+  try {
+    zip = await import_jszip.default.loadAsync(buffer, { checkCRC32: false });
+  } catch {
+    throw new FormatError("FORMAT_CORRUPT", `${label} is not a readable DOCX/OOXML ZIP package (corrupted, truncated or not a ZIP archive)`);
+  }
   const parts = /* @__PURE__ */ new Map();
   const entries = Object.values(zip.files).filter((entry) => !entry.dir);
   for (const entry of entries) {
     const normalized = entry.name.replace(/\\/g, "/");
     if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-      throw new Error(`Package entry escapes the package root: ${entry.name}`);
+      throw new FormatError("FORMAT_CORRUPT", `${label} contains a package entry that escapes the package root (${entry.name})`);
     }
-    const data = await entry.async("nodebuffer");
+    const declared = entry._data?.uncompressedSize;
+    if (typeof declared === "number" && declared > MAX_PART_BYTES) {
+      throw new FormatError("FORMAT_TOO_LARGE", `${label} declares a ${declared} byte part (${entry.name}), above the ${MAX_PART_BYTES} byte limit`);
+    }
+    let data;
+    try {
+      data = await entry.async("nodebuffer");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const bomb = /size mismatch|uncompressed|invalid size|too large/i.test(message);
+      throw new FormatError(bomb ? "FORMAT_BOMB" : "FORMAT_CORRUPT", bomb ? `${label} contains a part (${entry.name}) whose declared uncompressed size does not match its payload (ZIP bomb shape)` : `${label} contains an unreadable part (${entry.name})`);
+    }
     if (data.byteLength > MAX_PART_BYTES) {
-      throw new Error(`Package part too large: ${entry.name} (${data.byteLength} bytes)`);
+      throw new FormatError("FORMAT_TOO_LARGE", `${label} contains a part too large to import (${entry.name}, ${data.byteLength} bytes)`);
     }
     parts.set(normalized, Buffer.from(data));
   }
   return { parts, digest, isEncrypted: false };
 }
-function readText(parts, path3) {
-  const data = parts.get(path3);
+function readText(parts, path4) {
+  const data = parts.get(path4);
   return data ? data.toString("utf8") : void 0;
 }
 function resolvePartPath(sourcePart, target) {
@@ -175610,7 +175715,7 @@ function groupHyperlinks(inlines) {
   }
   return groups;
 }
-function paragraphXml(builder, paragraph2, context, sectionTail) {
+function paragraphXml(builder, paragraph2, context, sectionTail, markEmptyParagraph = false) {
   builder.open("w:p");
   const bookmarkName = context.headingBookmarks.get(paragraph2.id);
   if (bookmarkName) {
@@ -175636,6 +175741,9 @@ function paragraphXml(builder, paragraph2, context, sectionTail) {
       for (const inline2 of group.inlines)
         runXml(builder, inline2, context);
     }
+  }
+  if (markEmptyParagraph && paragraph2.inlines.length === 0) {
+    builder.leaf("w:r");
   }
   if (bookmarkName) {
     builder.leaf("w:bookmarkEnd", { "w:id": context.nextId() });
@@ -176374,8 +176482,8 @@ async function exportDocx(doc, options = {}) {
       footerCounter += 1;
       number2 = footerCounter;
     }
-    const path3 = `word/${kind}${number2}.xml`;
-    const context = { ...baseContext, partPath: path3 };
+    const path4 = `word/${kind}${number2}.xml`;
+    const context = { ...baseContext, partPath: path4 };
     const tag = kind === "header" ? "w:hdr" : "w:ftr";
     const builder = new XmlBuilder().declaration();
     builder.open(tag, {
@@ -176388,8 +176496,8 @@ async function exportDocx(doc, options = {}) {
     for (const block2 of part.blocks)
       blockXml(builder, block2, context);
     builder.close(tag);
-    headerFooterParts.push({ path: path3, xml: builder.toString() });
-    return path3;
+    headerFooterParts.push({ path: path4, xml: builder.toString() });
+    return path4;
   };
   doc.sections.forEach((section, sectionIndex) => {
     const resolved = {
@@ -176399,13 +176507,13 @@ async function exportDocx(doc, options = {}) {
     for (const variant of ["default", "first", "even"]) {
       const header = section.headers[variant];
       if (header) {
-        const path3 = writeHeaderFooter(header, "header");
-        resolved.headers[variant] = writer.addRelationship(documentPath, REL_TYPES.header, path3.replace(/^word\//, ""));
+        const path4 = writeHeaderFooter(header, "header");
+        resolved.headers[variant] = writer.addRelationship(documentPath, REL_TYPES.header, path4.replace(/^word\//, ""));
       }
       const footer = section.footers[variant];
       if (footer) {
-        const path3 = writeHeaderFooter(footer, "footer");
-        resolved.footers[variant] = writer.addRelationship(documentPath, REL_TYPES.footer, path3.replace(/^word\//, ""));
+        const path4 = writeHeaderFooter(footer, "footer");
+        resolved.footers[variant] = writer.addRelationship(documentPath, REL_TYPES.footer, path4.replace(/^word\//, ""));
       }
     }
     headerFooterRids.set(sectionIndex, resolved);
@@ -176426,8 +176534,6 @@ async function exportDocx(doc, options = {}) {
     };
     if (blocks.length === 0) {
       if (isLast) {
-        documentBuilder.open("w:p");
-        documentBuilder.close("w:p");
         sectionPropertiesXml(documentBuilder, section, sectionIndex, bodyContext);
       } else {
         emitSectionBreak();
@@ -176442,7 +176548,7 @@ async function exportDocx(doc, options = {}) {
           paragraphXml(documentBuilder, block2, bodyContext, {
             section,
             sectionIndex
-          });
+          }, block2.inlines.length === 0);
         } else {
           blockXml(documentBuilder, block2, bodyContext);
           emitSectionBreak();
@@ -176968,6 +177074,9 @@ function createDocument(options = {}) {
   };
   return doc;
 }
+
+// packages/core/dist/docx/import.js
+init_text();
 
 // packages/core/dist/docx/parsers.js
 function resolvePartPath2(sourcePart, target) {
@@ -179157,8 +179266,8 @@ var BodyParser = class {
     return anchor;
   }
 };
-function contentTypeForPath(path3) {
-  const extension = path3.split(".").pop()?.toLowerCase() ?? "";
+function contentTypeForPath(path4) {
+  const extension = path4.split(".").pop()?.toLowerCase() ?? "";
   const map = {
     png: "image/png",
     jpg: "image/jpeg",
@@ -179415,9 +179524,10 @@ var PART_DESCRIPTIONS = [
   }
 ];
 async function importDocx(bytes, options = {}) {
-  const pkg = await readPackage(bytes);
+  const label = options.fileName ? `"${options.fileName}"` : "the document";
+  const pkg = await readPackage(bytes, { fileName: options.fileName });
   if (pkg.isEncrypted) {
-    throw new Error("This file is an OLE compound document (encrypted DOCX or legacy .doc). Decrypt it, or convert it with the legacy DOC importer.");
+    throw new FormatError("FORMAT_UNSUPPORTED", `${label} is an OLE compound document (encrypted DOCX or legacy .doc). Decrypt it, or convert it with the legacy DOC importer.`);
   }
   const parts = pkg.parts;
   const warnings = [];
@@ -179429,9 +179539,10 @@ async function importDocx(bytes, options = {}) {
       break;
     }
   }
+  validateContentTypes(parts, mainPath, label);
   const mainXml = readText(parts, mainPath);
   if (!mainXml)
-    throw new Error(`Package does not contain a main document part (looked for ${mainPath})`);
+    throw new FormatError("FORMAT_CORRUPT", `${label} does not contain a Word main document part (looked for ${mainPath})`);
   const documentPartDir = mainPath.split("/").slice(0, -1).join("/");
   const relsCache = /* @__PURE__ */ new Map();
   const relationshipsFor = (partPath) => {
@@ -179477,7 +179588,7 @@ async function importDocx(bytes, options = {}) {
   const host = {
     nextId: (prefix) => idFactory.next(prefix),
     relationshipsFor,
-    readPart: (path3) => parts.get(path3),
+    readPart: (path4) => parts.get(path4),
     media: {
       register: (target) => {
         const id2 = idFactory.next("img");
@@ -179494,7 +179605,7 @@ async function importDocx(bytes, options = {}) {
         mediaByPath.set(target.path, id2);
         return id2;
       },
-      lookup: (path3) => mediaByPath.get(path3)
+      lookup: (path4) => mediaByPath.get(path4)
     },
     notes: { footnotes, endnotes, commentIds: /* @__PURE__ */ new Set() },
     comments,
@@ -179562,7 +179673,7 @@ async function importDocx(bytes, options = {}) {
   const documentXml = parseXml(mainXml, mainPath);
   const bodyElement = first(documentXml.documentElement, NS.w, "body");
   if (!bodyElement)
-    throw new Error("Main document part has no w:body element");
+    throw new FormatError("FORMAT_CORRUPT", `${label} main document part (${mainPath}) has no w:body element`);
   const bodyChildren = childElements(bodyElement);
   const tocRanges = findTocRanges(bodyChildren);
   const tocStart = /* @__PURE__ */ new Map();
@@ -179588,7 +179699,11 @@ async function importDocx(bytes, options = {}) {
     const element = bodyChildren[index];
     const name = localNameOf(element);
     if (name === "sectPr") {
-      drafts.push({ blocks: currentBlocks, sector: { element, props: {} } });
+      drafts.push({
+        blocks: currentBlocks,
+        sector: { element, props: {} },
+        explicit: true
+      });
       currentBlocks = [];
       sawFinalSectPr = true;
       continue;
@@ -179601,9 +179716,24 @@ async function importDocx(bytes, options = {}) {
         relationships: documentRels,
         partPath: mainPath
       }, `body/p[${index}]`);
+      const previous = currentBlocks[currentBlocks.length - 1];
+      const carrierOnly = parsed.paragraph.inlines.length === 0 && !childElements(element).some((child) => localNameOf(child) !== "pPr");
+      if (parsed.sector && carrierOnly && (currentBlocks.length === 0 || previous?.type !== "paragraph")) {
+        drafts.push({
+          blocks: currentBlocks,
+          sector: parsed.sector,
+          explicit: true
+        });
+        currentBlocks = [];
+        continue;
+      }
       currentBlocks.push(parsed.paragraph);
       if (parsed.sector) {
-        drafts.push({ blocks: currentBlocks, sector: parsed.sector });
+        drafts.push({
+          blocks: currentBlocks,
+          sector: parsed.sector,
+          explicit: true
+        });
         currentBlocks = [];
       }
       continue;
@@ -179638,7 +179768,7 @@ async function importDocx(bytes, options = {}) {
     host.recordUnknownElement(`body/${name}[${index}]`, `w:${name}`, textOf(element), `Unsupported body element <${name}>`);
   }
   if (currentBlocks.length > 0 || drafts.length === 0) {
-    drafts.push({ blocks: currentBlocks, sector: void 0 });
+    drafts.push({ blocks: currentBlocks, sector: void 0, explicit: false });
   }
   if (!sawFinalSectPr && drafts.length > 0) {
     warnings.push("Document body has no final section properties; A4 defaults applied");
@@ -179647,6 +179777,14 @@ async function importDocx(bytes, options = {}) {
   let previousHeaders = {};
   let previousFooters = {};
   let nextBreak = "nextPage";
+  const inheritPart = (part) => {
+    if (!part)
+      return void 0;
+    const clone = structuredClone(part);
+    clone.id = idFactory.next("hf");
+    rekeyBlockIds(idFactory, clone.blocks);
+    return clone;
+  };
   const parseHeaderFooterPart = (partPath, kind) => {
     const xml = readText(parts, partPath);
     if (!xml) {
@@ -179692,20 +179830,20 @@ async function importDocx(bytes, options = {}) {
       }
     }
     const effectiveHeaders = {
-      default: headers.default ?? (previousHeaders.default ? structuredClone(previousHeaders.default) : void 0),
-      first: headers.first ?? (previousHeaders.first ? structuredClone(previousHeaders.first) : void 0),
-      even: headers.even ?? (previousHeaders.even ? structuredClone(previousHeaders.even) : void 0)
+      default: headers.default ?? inheritPart(previousHeaders.default),
+      first: headers.first ?? inheritPart(previousHeaders.first),
+      even: headers.even ?? inheritPart(previousHeaders.even)
     };
     const effectiveFooters = {
-      default: footers.default ?? (previousFooters.default ? structuredClone(previousFooters.default) : void 0),
-      first: footers.first ?? (previousFooters.first ? structuredClone(previousFooters.first) : void 0),
-      even: footers.even ?? (previousFooters.even ? structuredClone(previousFooters.even) : void 0)
+      default: footers.default ?? inheritPart(previousFooters.default),
+      first: footers.first ?? inheritPart(previousFooters.first),
+      even: footers.even ?? inheritPart(previousFooters.even)
     };
     previousHeaders = effectiveHeaders;
     previousFooters = effectiveFooters;
     const section = {
       id: idFactory.next("s"),
-      blocks: draft.blocks.length > 0 ? draft.blocks : [emptyParagraph(idFactory)],
+      blocks: draft.explicit || draft.blocks.length > 0 ? draft.blocks : [emptyParagraph(idFactory)],
       page: skeleton.page,
       columns: skeleton.columns,
       headers: effectiveHeaders,
@@ -179769,11 +179907,11 @@ async function importDocx(bytes, options = {}) {
       remapNotes(shape.blocks);
   }
   const customXml2 = [];
-  for (const path3 of parts.keys()) {
-    if (/^customXml\/item\d+\.xml$/.test(path3)) {
-      const xml = readText(parts, path3);
+  for (const path4 of parts.keys()) {
+    if (/^customXml\/item\d+\.xml$/.test(path4)) {
+      const xml = readText(parts, path4);
       if (xml)
-        customXml2.push({ itemPath: path3, xml });
+        customXml2.push({ itemPath: path4, xml });
     }
   }
   const customProps = {};
@@ -179797,41 +179935,41 @@ async function importDocx(bytes, options = {}) {
   const metadata = metadataFromParts(core, appProps);
   metadata.custom = customProps;
   const unmappedParts = [];
-  for (const path3 of parts.keys()) {
-    if (path3 === mainPath)
+  for (const path4 of parts.keys()) {
+    if (path4 === mainPath)
       continue;
-    if (path3 === findRelated("/styles") || path3 === findRelated("/numbering") || path3 === findRelated("/settings"))
+    if (path4 === findRelated("/styles") || path4 === findRelated("/numbering") || path4 === findRelated("/settings"))
       continue;
-    if (path3 === findRelated("/theme"))
+    if (path4 === findRelated("/theme"))
       continue;
-    if (path3 === footnotesPath || path3 === endnotesPath || path3 === commentsPath)
+    if (path4 === footnotesPath || path4 === endnotesPath || path4 === commentsPath)
       continue;
-    if (path3 === "docProps/core.xml" || path3 === "docProps/app.xml" || path3 === "docProps/custom.xml")
+    if (path4 === "docProps/core.xml" || path4 === "docProps/app.xml" || path4 === "docProps/custom.xml")
       continue;
-    if (/^word\/media\//.test(path3))
+    if (/^word\/media\//.test(path4))
       continue;
-    if (/^word\/_rels\//.test(path3))
+    if (/^word\/_rels\//.test(path4))
       continue;
-    if (UNMAPPED_PART_PATTERNS.some((pattern2) => pattern2.test(path3))) {
-      const description = PART_DESCRIPTIONS.find((entry) => entry.pattern.test(path3));
+    if (UNMAPPED_PART_PATTERNS.some((pattern2) => pattern2.test(path4))) {
+      const description = PART_DESCRIPTIONS.find((entry) => entry.pattern.test(path4));
       if (description && description.level !== "unsupported") {
         features.set(`part:${description.label}`, (features.get(`part:${description.label}`) ?? 0) + 1);
       } else if (description) {
         unknown.push({
           id: idFactory.next("unk"),
-          location: `part:${path3}`,
-          element: path3,
+          location: `part:${path4}`,
+          element: path4,
           xml: "",
           reason: `${description.label} preserved in the package but not represented in the document model`
         });
       }
       continue;
     }
-    if (/^word\/header\d+\.xml$/.test(path3) || /^word\/footer\d+\.xml$/.test(path3))
+    if (/^word\/header\d+\.xml$/.test(path4) || /^word\/footer\d+\.xml$/.test(path4))
       continue;
-    if (path3 === "word/commentsExtended.xml" || path3 === "word/people.xml")
+    if (path4 === "word/commentsExtended.xml" || path4 === "word/people.xml")
       continue;
-    unmappedParts.push(path3);
+    unmappedParts.push(path4);
   }
   const document = {
     schemaVersion: DOCUMENT_SCHEMA_VERSION,
@@ -179860,17 +179998,99 @@ async function importDocx(bytes, options = {}) {
     unknownElements,
     unmappedParts
   });
+  const replacedTexts = documentTextSectionsForImport(document);
+  if (replacedTexts.some((text2) => text2.includes("\uFFFD"))) {
+    report.losses.push({
+      feature: "text.unicode",
+      level: "partial",
+      reason: "U+FFFD replacement characters are present: lone surrogate code units cannot be represented in XML and were replaced",
+      preserved: false
+    });
+    report.transparent = false;
+  }
   document.compatibility = report;
   return {
     document,
     report,
     warnings: [
       ...warnings,
-      ...unmappedParts.map((path3) => `Unmapped package part preserved verbatim: ${path3}`)
+      ...unmappedParts.map((path4) => `Unmapped package part preserved verbatim: ${path4}`)
     ],
     packageDigest: pkg.digest,
     unmappedParts
   };
+}
+function documentTextSectionsForImport(doc) {
+  const parts = [];
+  for (const section of doc.sections) {
+    parts.push(blocksText(section.blocks));
+    for (const set of [section.headers, section.footers]) {
+      for (const variant of ["default", "first", "even"]) {
+        const part = set[variant];
+        if (part)
+          parts.push(blocksText(part.blocks));
+      }
+    }
+  }
+  for (const shape of doc.shapes) {
+    if (shape.kind === "textbox")
+      parts.push(blocksText(shape.blocks));
+  }
+  for (const note of [...doc.footnotes, ...doc.endnotes]) {
+    parts.push(blocksText(note.blocks));
+  }
+  return parts;
+}
+function rekeyBlockIds(idFactory, blocks) {
+  for (const block2 of blocks) {
+    block2.id = idFactory.next(block2.type === "table" ? "tbl" : block2.type === "toc" ? "toc" : "p");
+    if (block2.type === "table") {
+      for (const row of block2.rows) {
+        row.id = idFactory.next("row");
+        for (const cell of row.cells) {
+          cell.id = idFactory.next("cell");
+          rekeyBlockIds(idFactory, cell.blocks);
+        }
+      }
+    }
+  }
+}
+var WORD_MAIN_CONTENT_TYPES = /* @__PURE__ */ new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+  "application/vnd.ms-word.document.macroenabled.main+xml",
+  "application/vnd.ms-word.template.macroenabledtemplate.main+xml"
+]);
+function validateContentTypes(parts, mainPath, label) {
+  const xml = readText(parts, "[Content_Types].xml");
+  if (!xml) {
+    throw new FormatError("FORMAT_CORRUPT", `${label} is missing [Content_Types].xml and does not declare its main document part`);
+  }
+  let document;
+  try {
+    document = parseXml(xml, "[Content_Types].xml");
+  } catch {
+    throw new FormatError("FORMAT_CORRUPT", `${label} has an unreadable [Content_Types].xml`);
+  }
+  const root = document.documentElement;
+  if (!root || localNameOf(root) !== "Types") {
+    throw new FormatError("FORMAT_CORRUPT", `${label} has a malformed [Content_Types].xml (no Types root element)`);
+  }
+  const normalizedMain = mainPath.replace(/^\/+/, "").toLowerCase();
+  let declared = false;
+  for (const child of childElements(root)) {
+    if (localNameOf(child) !== "Override")
+      continue;
+    const target = (child.getAttribute("PartName") ?? "").replace(/^\/+/, "").toLowerCase();
+    if (target !== normalizedMain)
+      continue;
+    const contentType = (child.getAttribute("ContentType") ?? "").toLowerCase();
+    if (WORD_MAIN_CONTENT_TYPES.has(contentType))
+      declared = true;
+  }
+  if (!declared) {
+    throw new FormatError("FORMAT_CORRUPT", `${label} does not declare a WordprocessingML main document part (${mainPath}) in [Content_Types].xml`);
+  }
 }
 function emptyParagraph(idFactory) {
   return {
@@ -180014,19 +180234,6 @@ function buildReport(input) {
   };
 }
 
-// packages/core/dist/formats/types.js
-var FormatError = class extends Error {
-  code;
-  constructor(code2, message) {
-    super(message);
-    this.name = "FormatError";
-    this.code = code2;
-  }
-};
-function isFormatError(error) {
-  return error instanceof FormatError;
-}
-
 // packages/core/dist/formats/docx.js
 var CAPABILITIES = {
   canImport: true,
@@ -180101,11 +180308,11 @@ async function exportDocxFormat(doc, options = {}) {
     pageNumbers: options.pageNumbers,
     preserveTimestamps: options.preserveTimestamps ?? false
   });
-  const losses = result.droppedParts.map((path3) => ({
-    feature: `part:${path3}`,
+  const losses = result.droppedParts.map((path4) => ({
+    feature: `part:${path4}`,
     level: "unsupported",
     reason: "Part is preserved in the source package but has no model representation, so it was not re-emitted",
-    location: `part:${path3}`,
+    location: `part:${path4}`,
     preserved: false
   }));
   return { buffer: result.buffer, warnings: result.warnings, losses };
@@ -180941,6 +181148,42 @@ function decodeHtmlEntities(text2) {
 function collapseWhitespace(text2) {
   return text2.replace(/[\t\n\r\f ]+/g, " ");
 }
+function inlineTextHtml(text2) {
+  let out = "";
+  let index = 0;
+  while (index < text2.length) {
+    const char = text2[index];
+    if (char === "	") {
+      out += '<span data-dsh-tab="1">	</span>';
+      index += 1;
+      continue;
+    }
+    if (char === "\n") {
+      out += '<span data-dsh-newline="1"></span>';
+      index += 1;
+      continue;
+    }
+    if (char === " ") {
+      let end2 = index;
+      while (text2[end2] === " ")
+        end2 += 1;
+      const run = end2 - index;
+      if (run === 1 && index > 0 && end2 < text2.length)
+        out += " ";
+      else
+        out += `<span data-dsh-space="${run}">${"\xA0".repeat(run)}</span>`;
+      index = end2;
+      continue;
+    }
+    let end = index;
+    while (end < text2.length && text2[end] !== "	" && text2[end] !== "\n" && text2[end] !== " ") {
+      end += 1;
+    }
+    out += escapeHtml(text2.slice(index, end));
+    index = end;
+  }
+  return out;
+}
 function fromDomNode(node) {
   if (node.nodeType === 3)
     return { kind: "text", text: node.nodeValue ?? "" };
@@ -181384,6 +181627,8 @@ var HtmlImporter = class {
   pendingNotes = [];
   pendingComments = [];
   usedFallback = false;
+  /** Set when the document was produced by this exporter. */
+  preserveWhitespace = false;
   constructor(ctx) {
     this.ctx = ctx;
   }
@@ -181394,6 +181639,7 @@ var HtmlImporter = class {
     this.usedFallback = usedFallback;
     this.collectAnnotations(root);
     const body = bodyOf(root);
+    this.preserveWhitespace = attrOf(body, "data-dsh-whitespace") === "preserve";
     for (const child of body.children ?? []) {
       if (child.kind === "element" && child.name && HEAD_TAGS.has(child.name))
         continue;
@@ -181419,8 +181665,8 @@ var HtmlImporter = class {
     }
   }
   collectAnnotations(root) {
-    const notesSection = findElement(root, (node) => (hasClass(node, "dsh-footnotes") || hasClass(node, "dsh-endnotes")) && (node.name === "section" || node.name === "div" || node.name === "ol"));
-    if (notesSection) {
+    const notesSections = findAllElements(root, (node) => (hasClass(node, "dsh-footnotes") || hasClass(node, "dsh-endnotes")) && (node.name === "section" || node.name === "div" || node.name === "ol"));
+    for (const notesSection of notesSections) {
       const type = hasClass(notesSection, "dsh-endnotes") ? "endnote" : "footnote";
       const items = findAllElements(notesSection, (node) => node.name === "li" && Boolean(attrOf(node, "id")));
       for (const item of items) {
@@ -181477,6 +181723,27 @@ var HtmlImporter = class {
     };
     if (HEAD_TAGS.has(name))
       return;
+    if (name === "nav" && hasClass(node, "dsh-toc")) {
+      const clampLevel = (value, fallback) => {
+        const parsed = Number.parseInt(value ?? "", 10);
+        return Number.isFinite(parsed) ? Math.max(1, Math.min(9, parsed)) : fallback;
+      };
+      const minLevel = clampLevel(attrOf(node, "data-toc-min-level"), 1);
+      const maxLevel = Math.max(minLevel, clampLevel(attrOf(node, "data-toc-max-level"), minLevel + 2));
+      const leader = attrOf(node, "data-toc-tab-leader");
+      target.push({
+        type: "toc",
+        id: this.ctx.next("toc"),
+        minLevel,
+        maxLevel,
+        hyperlinks: attrOf(node, "data-toc-hyperlinks") !== "false",
+        pageNumbers: attrOf(node, "data-toc-page-numbers") !== "false",
+        tabLeader: leader === "none" || leader === "underscore" || leader === "hyphen" ? leader : "dot",
+        ...attrOf(node, "data-toc-include-title") === "true" ? { includeTitle: true } : {}
+      });
+      this.count("toc");
+      return;
+    }
     if (name === "html" || name === "body" || name === "div" || name === "section" || name === "article" || name === "main" || name === "header" || name === "footer" || name === "nav" || name === "form" || name === "fieldset" || name === "details" || name === "summary" || name === "figure" || name === "figcaption" || name === "address" || name === "center" || name === "hgroup") {
       for (const child of node.children ?? []) {
         this.convertNode(child, target, state);
@@ -181575,7 +181842,7 @@ var HtmlImporter = class {
     }
     const inlines = this.inlinesOfNodes(inlineNodes, {}, state);
     const props = paragraphPropsFromNode(node, state.blockquoteDepth);
-    if (inlines.length > 0)
+    if (inlines.length > 0 || blockNodes.length === 0 && (node.children ?? []).length === 0)
       target.push(makeParagraph(this.ctx, inlines, { props }));
     for (const child of blockNodes)
       this.convertNode(child, target, state);
@@ -181841,7 +182108,8 @@ var HtmlImporter = class {
   inlinesOfNodes(nodes, base, state) {
     const out = [];
     this.walkInline(nodes, base, out, state);
-    trimInlineWhitespace(out);
+    if (!this.preserveWhitespace)
+      trimInlineWhitespace(out);
     return out;
   }
   walkInline(nodes, props, out, state) {
@@ -181877,6 +182145,16 @@ var HtmlImporter = class {
       const commentMark2 = this.commentMarkInline(node);
       if (commentMark2) {
         out.push(commentMark2);
+        continue;
+      }
+      const spaceMarker = attrOf(node, "data-dsh-space");
+      if (spaceMarker !== void 0) {
+        const count = Math.max(1, Math.min(1024, Number.parseInt(spaceMarker, 10) || 1));
+        pushText(out, " ".repeat(count), props);
+        continue;
+      }
+      if (attrOf(node, "data-dsh-newline") !== void 0) {
+        pushText(out, "\n", props);
         continue;
       }
       if (hasClass(node, "dsh-page-break")) {
@@ -182387,6 +182665,9 @@ var HtmlWriter = class {
   }
   body() {
     const out = [];
+    if (this.doc.sections.length > 1) {
+      this.losses.partial("sections.flattened", "HTML has no multiple-section model: section breaks become page breaks and the document re-imports as one section", void 0, false);
+    }
     this.doc.sections.forEach((section, sectionIndex) => {
       if (sectionIndex > 0) {
         out.push(`<div class="dsh-page-break" data-dsh-section-break="${escapeHtml(section.breakBefore)}"></div>`);
@@ -182415,8 +182696,8 @@ var HtmlWriter = class {
     if (block2.type === "table")
       return this.table(block2, sectionIndex);
     if (block2.type === "toc") {
-      this.losses.partial("toc", "Table of contents is emitted as a placeholder; page numbers need the layout engine", `section[${sectionIndex}]`, false);
-      return `<nav class="dsh-toc" data-toc-min-level="${block2.minLevel}" data-toc-max-level="${block2.maxLevel}"></nav>`;
+      this.losses.partial("toc", "Table of contents entries are regenerated by the layout engine; the cached entry text and page numbers are not stored", `section[${sectionIndex}]`, true);
+      return `<nav class="dsh-toc" data-toc-min-level="${block2.minLevel}" data-toc-max-level="${block2.maxLevel}" data-toc-hyperlinks="${block2.hyperlinks}" data-toc-page-numbers="${block2.pageNumbers}" data-toc-tab-leader="${block2.tabLeader}" data-toc-include-title="${block2.includeTitle === true}"></nav>`;
     }
     return this.paragraph(block2, sectionIndex);
   }
@@ -182482,7 +182763,7 @@ var HtmlWriter = class {
         } else {
           closeLink();
         }
-        const text2 = context === "pre" ? escapeHtml(inline2.text) : escapeHtml(inline2.text);
+        const text2 = context === "pre" ? escapeHtml(inline2.text) : inlineTextHtml(inline2.text);
         out += this.runWrapper(text2, props, inline2.props.revision);
         continue;
       }
@@ -182607,8 +182888,11 @@ var HtmlWriter = class {
       const cells = [];
       for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex += 1) {
         const cell = row.cells[cellIndex];
-        if (cell.props.vMerge === "continue")
-          continue;
+        if (cell.props.vMerge === "continue") {
+          const anchored = rows.slice(0, rows.indexOf(row)).some((earlier) => earlier.cells[cellIndex]?.props.vMerge === "restart");
+          if (anchored)
+            continue;
+        }
         const gridSpan = cell.props.gridSpan ?? 1;
         let rowSpan = 1;
         if (cell.props.vMerge === "restart") {
@@ -182636,14 +182920,14 @@ var HtmlWriter = class {
         const textParts = [];
         for (const block2 of cell.blocks) {
           if (block2.type === "paragraph") {
-            textParts.push(this.inlineHtml(block2.inlines, block2, "p"));
+            textParts.push(this.paragraph(block2, sectionIndex));
           } else if (block2.type === "table") {
             textParts.push(this.table(block2, sectionIndex));
           } else {
             textParts.push("");
           }
         }
-        const content = textParts.join("<br />");
+        const content = textParts.join("");
         cells.push(`<${cellTag}${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}>${content}</${cellTag}>`);
       }
       return `<tr>${cells.join("")}</tr>`;
@@ -182721,7 +183005,9 @@ async function exportHtml(doc, options = {}) {
     writer.stylesheet(),
     "</style>",
     "</head>",
-    "<body>",
+    // The marker lets this importer round-trip paragraph boundary whitespace
+    // exactly instead of applying HTML's whitespace-collapsing rules.
+    '<body data-dsh-whitespace="preserve">',
     body,
     "</body>",
     "</html>"
@@ -189823,6 +190109,25 @@ var OdtReader = class {
         target.push(this.convertTable(node, state));
         return;
       }
+      case "table-of-content": {
+        const levels = odfAttr(node, ODF.text, "outline-level") ?? "1-3";
+        const [minRaw, maxRaw] = levels.split("-");
+        const minLevel = Math.max(1, Math.min(9, Number.parseInt(minRaw, 10) || 1));
+        const maxLevel = Math.max(minLevel, Math.min(9, Number.parseInt(maxRaw, 10) || minLevel + 2));
+        const leader = odfAttr(node, ODF.text, "dsh-tab-leader");
+        target.push({
+          type: "toc",
+          id: this.ctx.next("toc"),
+          minLevel,
+          maxLevel,
+          hyperlinks: odfAttr(node, ODF.text, "dsh-hyperlinks") !== "false",
+          pageNumbers: odfAttr(node, ODF.text, "dsh-page-numbers") !== "false",
+          tabLeader: leader === "none" || leader === "underscore" || leader === "hyphen" ? leader : "dot",
+          ...odfAttr(node, ODF.text, "dsh-include-title") === "true" ? { includeTitle: true } : {}
+        });
+        this.count("toc");
+        return;
+      }
       case "section":
       case "index-body":
       case "tracked-changes":
@@ -190396,6 +190701,7 @@ var OdtWriter = class {
   mediaFiles = /* @__PURE__ */ new Map();
   listStyles = /* @__PURE__ */ new Map();
   tableIndex = 0;
+  tocCount = 0;
   noteNumbers = /* @__PURE__ */ new Map();
   pageBreakBlocks = /* @__PURE__ */ new Set();
   constructor(doc) {
@@ -190531,6 +190837,9 @@ var OdtWriter = class {
   body() {
     const sections = this.doc.sections;
     const parts = [];
+    if (sections.length > 1) {
+      this.losses.partial("sections.flattened", "ODF has no document-level section model: sections are represented as page breaks and re-import as one section", void 0, false);
+    }
     sections.forEach((section, sectionIndex) => {
       if (sectionIndex > 0) {
         if (section.breakBefore !== "continuous") {
@@ -190563,7 +190872,7 @@ var OdtWriter = class {
         continue;
       }
       if (block2.type === "toc") {
-        this.losses.partial("toc", "Table of contents is not written as an ODF index", void 0, false);
+        out.push(this.toc(block2));
         index += 1;
         continue;
       }
@@ -190577,6 +190886,25 @@ var OdtWriter = class {
       index += 1;
     }
     return out.join("\n");
+  }
+  /**
+   * Writes a table-of-contents block as a real ODF index. The cached entry body
+   * is regenerated by the layout engine, so the options are carried in
+   * attributes and read back by the importer.
+   */
+  toc(block2) {
+    const attributes = {
+      "text:name": `TOC${this.tocCount}`,
+      "text:style-name": "TableofContents",
+      "text:outline-level": `${block2.minLevel}-${block2.maxLevel}`,
+      "text:dsh-hyperlinks": block2.hyperlinks ? "true" : "false",
+      "text:dsh-page-numbers": block2.pageNumbers ? "true" : "false",
+      "text:dsh-tab-leader": block2.tabLeader,
+      "text:dsh-include-title": block2.includeTitle === true ? "true" : "false"
+    };
+    this.tocCount += 1;
+    this.losses.partial("toc", "Table of contents entries are regenerated by the layout engine; the cached entry text and page numbers are not stored", void 0, true);
+    return `<text:table-of-content${xmlAttrs(attributes)}><text:index-body/></text:table-of-content>`;
   }
   paragraph(paragraph2, _section, extraProps) {
     const styleName = this.namedStyleFor(paragraph2.style);
@@ -190713,8 +191041,8 @@ var OdtWriter = class {
           this.losses.unsupported("image.missing", "Image media is not in the document", `image:${inline2.mediaId}`, false);
           return `<text:span>${xmlEscape(inline2.alt ?? "")}</text:span>`;
         }
-        const path3 = this.registerMedia(asset);
-        const frame = `<draw:frame draw:style-name="ImageFrame" svg:width="${pt(inline2.width)}" svg:height="${pt(inline2.height)}"${inline2.alt ? ` svg:title="${xmlEscape(inline2.alt)}"` : ""}><draw:image xlink:href="${xmlEscape(path3)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`;
+        const path4 = this.registerMedia(asset);
+        const frame = `<draw:frame draw:style-name="ImageFrame" svg:width="${pt(inline2.width)}" svg:height="${pt(inline2.height)}"${inline2.alt ? ` svg:title="${xmlEscape(inline2.alt)}"` : ""}><draw:image xlink:href="${xmlEscape(path4)}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`;
         if (inline2.anchor?.type === "floating") {
           this.losses.partial("image.floating", "Floating images are exported as anchored frames", `image:${inline2.mediaId}`, false);
         }
@@ -190793,13 +191121,13 @@ var OdtWriter = class {
     if (existing)
       return existing.path;
     const extension = mediaExtension(asset.contentType, asset.fileName);
-    const path3 = `Pictures/${asset.id}.${extension}`;
+    const path4 = `Pictures/${asset.id}.${extension}`;
     this.mediaFiles.set(asset.id, {
-      path: path3,
+      path: path4,
       data: Buffer.from(asset.data, "base64"),
       contentType: asset.contentType
     });
-    return path3;
+    return path4;
   }
   automaticStyles() {
     const blocks = [];
@@ -191145,15 +191473,15 @@ function previewMarker(doc) {
   doc.metadata.custom.DSHPreview = "true";
 }
 function iwaEntries(parts) {
-  return [...parts.keys()].filter((path3) => path3.startsWith("Index/") && path3.toLowerCase().endsWith(".iwa")).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  return [...parts.keys()].filter((path4) => path4.startsWith("Index/") && path4.toLowerCase().endsWith(".iwa")).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 function zipSniffText(bytes) {
   const head = bytes.subarray(0, Math.min(bytes.length, 1024 * 1024)).toString("latin1");
   if (bytes.length <= 1024 * 1024)
     return head;
-  const tail = bytes.subarray(Math.max(0, bytes.length - 256 * 1024)).toString("latin1");
+  const tail2 = bytes.subarray(Math.max(0, bytes.length - 256 * 1024)).toString("latin1");
   return `${head}
-${tail}`;
+${tail2}`;
 }
 function zipMentionsPages(bytes) {
   if (!isZip2(bytes))
@@ -191468,31 +191796,31 @@ function snappyDecompress(input) {
     throw new Error(`Snappy stream ended after ${written} of ${output.length} bytes`);
   return output;
 }
-function scanIwaFile(path3, bytes, losses, budget, out) {
+function scanIwaFile(path4, bytes, losses, budget, out) {
   let frames = 0;
   let offset = 0;
   let index = 0;
   while (offset < bytes.length) {
     if (bytes.length - offset < 4) {
-      losses.partial("pages.iwaFrame", "Trailing bytes are too short for an IWA frame header", path3, false);
+      losses.partial("pages.iwaFrame", "Trailing bytes are too short for an IWA frame header", path4, false);
       break;
     }
     const control = bytes[offset];
     const length = bytes[offset + 1] | bytes[offset + 2] << 8 | bytes[offset + 3] << 16;
     const start = offset + 4;
     if (length === 0 || start + length > bytes.length) {
-      losses.partial("pages.iwaFrame", `IWA frame ${index + 1} declares ${length} payload bytes but ${bytes.length - start} remain`, path3, false);
+      losses.partial("pages.iwaFrame", `IWA frame ${index + 1} declares ${length} payload bytes but ${bytes.length - start} remain`, path4, false);
       break;
     }
     const payload = bytes.subarray(start, start + length);
     offset = start + length;
     index += 1;
     if (index > MAX_IWA_FRAMES_PER_FILE) {
-      losses.unsupported("pages.iwaLimit", `Only the first ${MAX_IWA_FRAMES_PER_FILE} IWA frames of a file are scanned`, path3, false);
+      losses.unsupported("pages.iwaLimit", `Only the first ${MAX_IWA_FRAMES_PER_FILE} IWA frames of a file are scanned`, path4, false);
       break;
     }
     if (budget.frames <= 0) {
-      losses.unsupported("pages.iwaLimit", `Only the first ${MAX_IWA_FRAMES_TOTAL} IWA frames of the document are scanned`, path3, false);
+      losses.unsupported("pages.iwaLimit", `Only the first ${MAX_IWA_FRAMES_TOTAL} IWA frames of the document are scanned`, path4, false);
       break;
     }
     budget.frames -= 1;
@@ -191503,18 +191831,18 @@ function scanIwaFile(path3, bytes, losses, budget, out) {
       try {
         data = snappyDecompress(payload);
       } catch (error) {
-        losses.partial("pages.iwaFrame", `IWA frame ${index} could not be decompressed: ${errorMessage(error)}`, path3, false);
+        losses.partial("pages.iwaFrame", `IWA frame ${index} could not be decompressed: ${errorMessage(error)}`, path4, false);
         continue;
       }
     } else {
-      losses.partial("pages.iwaFrame", `Unsupported IWA frame control byte 0x${control.toString(16).padStart(2, "0")}`, path3, false);
+      losses.partial("pages.iwaFrame", `Unsupported IWA frame control byte 0x${control.toString(16).padStart(2, "0")}`, path4, false);
       continue;
     }
     frames += 1;
     if (data.length === 0)
       continue;
     if (data.length > budget.bytes) {
-      losses.unsupported("pages.iwaLimit", "Decompressed IWA data exceeds the scan budget; remaining frames are skipped", path3, false);
+      losses.unsupported("pages.iwaLimit", "Decompressed IWA data exceeds the scan budget; remaining frames are skipped", path4, false);
       budget.bytes = 0;
       break;
     }
@@ -191624,11 +191952,11 @@ function importPagesIwa(parts, options) {
   };
   const strings = [];
   let frameCount = 0;
-  for (const path3 of iwaEntries(parts)) {
-    const bytes = parts.get(path3);
+  for (const path4 of iwaEntries(parts)) {
+    const bytes = parts.get(path4);
     if (!bytes)
       continue;
-    frameCount += scanIwaFile(path3, bytes, losses, budget, strings);
+    frameCount += scanIwaFile(path4, bytes, losses, budget, strings);
     if (budget.frames <= 0 || budget.bytes <= 0)
       break;
   }
@@ -191861,8 +192189,8 @@ function workbookSheets(parts) {
     const name = attr(sheet, null, "name") ?? `Sheet${sheets.length + 1}`;
     const relId = attr(sheet, NS_X.officeDocument, "id") ?? attr(sheet, null, "r:id");
     const relationship = relId ? rels.get(relId) : void 0;
-    const path3 = relationship ? resolvePartPath("xl/workbook.xml", relationship.target) : `xl/worksheets/sheet${sheets.length + 1}.xml`;
-    sheets.push({ name, path: path3 });
+    const path4 = relationship ? resolvePartPath("xl/workbook.xml", relationship.target) : `xl/worksheets/sheet${sheets.length + 1}.xml`;
+    sheets.push({ name, path: path4 });
   }
   return sheets;
 }
@@ -192297,10 +192625,10 @@ function pptxImage(ctx, shape, rels, parts, losses, slidePath) {
     losses.partial("pptx.image", "Slide picture has no resolvable media relationship", slidePath, false);
     return void 0;
   }
-  const path3 = resolvePartPath(slidePath, relationship.target);
-  const data = parts.get(path3);
+  const path4 = resolvePartPath(slidePath, relationship.target);
+  const data = parts.get(path4);
   if (!data) {
-    losses.partial("pptx.image", "Slide picture payload is missing from the package", path3, false);
+    losses.partial("pptx.image", "Slide picture payload is missing from the package", path4, false);
     return void 0;
   }
   const extent = descendants(shape, "ext")[0];
@@ -192308,7 +192636,7 @@ function pptxImage(ctx, shape, rels, parts, losses, slidePath) {
   const cy2 = Number(attr(extent, null, "cy") ?? 0);
   return addImageInline(ctx, {
     data,
-    fileName: path3.split("/").pop(),
+    fileName: path4.split("/").pop(),
     width: cx2 > 0 ? emuToPt(cx2) : void 0,
     height: cy2 > 0 ? emuToPt(cy2) : void 0,
     alt: descendants(shape, "cNvPr").map((node) => attr(node, null, "descr") ?? "").find((value) => value.length > 0)
@@ -193893,9 +194221,32 @@ var CAPABILITIES7 = {
     "Tables are flattened to tab-separated rows."
   ]
 };
-function decodeText(bytes, maxBytes) {
+function looksBinary(bytes) {
+  if (bytes.length === 0)
+    return false;
+  let control = 0;
+  for (const byte of bytes) {
+    if (byte === 0)
+      return true;
+    if (byte < 9 || byte > 13 && byte < 32 && byte !== 27 || byte === 127) {
+      control += 1;
+    }
+  }
+  if (control / bytes.length > 0.02)
+    return true;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return true;
+  }
+  return false;
+}
+function decodeText(bytes, maxBytes, fileName) {
   if (bytes.byteLength > maxBytes) {
     throw new FormatError("FORMAT_TOO_LARGE", `Text input is ${bytes.byteLength} bytes, above the ${maxBytes} byte limit`);
+  }
+  if (looksBinary(bytes)) {
+    throw new FormatError("FORMAT_CORRUPT", `${fileName ? `"${fileName}"` : "The input"} is binary: a text format only accepts printable UTF-8, but the bytes contain NUL/control characters or invalid UTF-8`);
   }
   let text2 = bytes.toString("utf8");
   if (text2.charCodeAt(0) === 65279)
@@ -193904,7 +194255,7 @@ function decodeText(bytes, maxBytes) {
 }
 async function importText(bytes, options = {}) {
   const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
-  const text2 = decodeText(buffer, options.maxBytes ?? 64 * 1024 * 1024);
+  const text2 = decodeText(buffer, options.maxBytes ?? 64 * 1024 * 1024, options.fileName);
   const ctx = createDocumentContext({
     metadata: { title: titleFromName2(options.fileName) }
   });
@@ -195897,10 +196248,918 @@ function documentFeatureInventory(doc) {
 init_access();
 init_layout();
 
-// packages/core/dist/service/workspace.js
-import { mkdir, readFile, readdir, rm, stat, writeFile, appendFile } from "node:fs/promises";
-import path from "node:path";
+// packages/core/dist/engine/libreoffice.js
+import { spawn } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+var LIBREOFFICE_INSTALL_HINT = "winget install --id TheDocumentFoundation.LibreOffice";
+var DEFAULT_DETECTION_TIMEOUT_MS = 5e3;
+var DEFAULT_CONVERSION_TIMEOUT_MS = 6e4;
+var MIN_CONVERSION_TIMEOUT_MS = 50;
+var MAX_CONVERSION_TIMEOUT_MS = 6e5;
+var MAX_PATH_LENGTH = 4096;
+var MAX_CAPTURED_OUTPUT = 1024 * 1024;
+var VERSION_PATTERN = /LibreOffice(?:Dev)?\s+([0-9]+(?:\.[0-9]+)+)/i;
+var LibreOfficeError = class extends Error {
+  code;
+  details;
+  constructor(code2, message, details) {
+    super(message);
+    this.name = "LibreOfficeError";
+    this.code = code2;
+    this.details = details;
+  }
+};
+var LIBREOFFICE_CONVERSION_FORMATS = Object.freeze({
+  docx: {
+    extension: "docx",
+    filter: "MS Word 2007 XML",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  },
+  odt: {
+    extension: "odt",
+    filter: "writer8",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  },
+  rtf: {
+    extension: "rtf",
+    filter: "Rich Text Format",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  },
+  txt: {
+    extension: "txt",
+    filter: "Text",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  },
+  html: {
+    extension: "html",
+    filter: "HTML (StarWriter)",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  },
+  pdf: {
+    extension: "pdf",
+    filter: "writer_pdf_Export",
+    inputExtensions: ["docx", "dotx", "odt", "rtf", "txt", "html", "htm"]
+  }
+});
+function supportedLibreOfficeFormats() {
+  return Object.keys(LIBREOFFICE_CONVERSION_FORMATS);
+}
+function supportedInputExtensions() {
+  const extensions = /* @__PURE__ */ new Set();
+  for (const definition of Object.values(LIBREOFFICE_CONVERSION_FORMATS)) {
+    for (const extension of definition.inputExtensions) {
+      extensions.add(extension);
+    }
+  }
+  return extensions;
+}
+function environmentValue(env, name) {
+  const direct = env[name];
+  if (typeof direct === "string")
+    return direct;
+  const key = Object.keys(env).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+  return key === void 0 ? void 0 : env[key];
+}
+function splitPathValue(value, platform) {
+  const delimiter = platform === "win32" ? ";" : ":";
+  return value.split(delimiter).map((entry) => entry.trim()).map((entry) => {
+    if (entry.length >= 2 && entry.startsWith('"') && entry.endsWith('"')) {
+      return entry.slice(1, -1);
+    }
+    return entry;
+  }).filter((entry) => entry.length > 0);
+}
+function pathApiFor(platform) {
+  return platform === "win32" ? path.win32 : path.posix;
+}
+function normalisePathext(env) {
+  const raw = environmentValue(env, "PATHEXT");
+  const declared = raw && raw.trim().length > 0 ? raw.split(";") : [".COM", ".EXE", ".BAT", ".CMD"];
+  const seen = /* @__PURE__ */ new Set();
+  const extensions = [];
+  for (const entry of declared) {
+    const extension = entry.trim().toLowerCase();
+    if (!/^\.[a-z0-9]+$/.test(extension))
+      continue;
+    if (seen.has(extension))
+      continue;
+    seen.add(extension);
+    extensions.push(extension);
+  }
+  return extensions.sort((left, right) => {
+    const priority = (extension) => extension === ".com" ? 0 : extension === ".exe" ? 1 : extension === ".bin" ? 2 : 3;
+    return priority(left) - priority(right);
+  });
+}
+function standardPaths(platform, env) {
+  if (platform === "win32") {
+    const programFiles = environmentValue(env, "ProgramFiles") ?? "C:\\Program Files";
+    const programFilesX86 = environmentValue(env, "ProgramFiles(x86)") ?? "C:\\Program Files (x86)";
+    const directories = [
+      path.win32.join(programFiles, "LibreOffice", "program"),
+      path.win32.join(programFilesX86, "LibreOffice", "program")
+    ];
+    const localAppData = environmentValue(env, "LOCALAPPDATA");
+    if (localAppData && localAppData.trim().length > 0) {
+      directories.push(path.win32.join(localAppData, "Programs", "LibreOffice", "program"));
+    }
+    return directories.flatMap((directory) => [
+      path.win32.join(directory, "soffice.com"),
+      path.win32.join(directory, "soffice.exe")
+    ]);
+  }
+  if (platform === "darwin") {
+    const home = environmentValue(env, "HOME") ?? environmentValue(env, "USERPROFILE") ?? "";
+    const candidates = ["/Applications/LibreOffice.app/Contents/MacOS/soffice"];
+    if (home.trim().length > 0) {
+      candidates.push(path.posix.join(home, "Applications", "LibreOffice.app", "Contents", "MacOS", "soffice"));
+    }
+    return candidates;
+  }
+  return [
+    "/usr/bin/soffice",
+    "/usr/lib/libreoffice/program/soffice",
+    "/usr/local/bin/soffice",
+    "/opt/libreoffice/program/soffice",
+    "/snap/bin/libreoffice"
+  ];
+}
+function safeExists(exists, candidate) {
+  if (candidate.includes("\0"))
+    return false;
+  try {
+    return exists(candidate) === true;
+  } catch {
+    return false;
+  }
+}
+function preferConsoleWrapper(candidatePath, platform, exists) {
+  if (platform !== "win32")
+    return candidatePath;
+  if (!candidatePath.toLowerCase().endsWith(".exe"))
+    return candidatePath;
+  const wrapper = `${candidatePath.slice(0, -4)}.com`;
+  return safeExists(exists, wrapper) ? wrapper : candidatePath;
+}
+function rejectionFor(candidate, source, platform) {
+  if (candidate.includes("\0"))
+    return "nul-byte";
+  if (!pathApiFor(platform).isAbsolute(candidate))
+    return "not-absolute";
+  const extension = pathApiFor(platform).extname(candidate).toLowerCase();
+  if (extension === ".cmd" || extension === ".bat") {
+    return "windows-batch-requires-shell";
+  }
+  if (extension === ".ps1" || extension === ".vbs") {
+    return "unsupported-script";
+  }
+  if (extension === ".js" || extension === ".mjs" || extension === ".cjs") {
+    return source === "env" ? void 0 : "script-shim-not-auto-detected";
+  }
+  return void 0;
+}
+function libreOfficeCandidates(options = {}) {
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const exists = options.exists ?? existsSync;
+  const api = pathApiFor(platform);
+  const raw = [];
+  const override = environmentValue(env, "DSH_SOFFICE_PATH");
+  if (typeof override === "string" && override.trim().length > 0) {
+    const trimmed = override.trim();
+    const preferred = preferConsoleWrapper(trimmed, platform, exists);
+    raw.push({ path: preferred, source: "env" });
+    if (preferred !== trimmed) {
+      raw.push({ path: trimmed, source: "env" });
+    }
+  }
+  const pathEntries = splitPathValue(environmentValue(env, "PATH") ?? environmentValue(env, "Path") ?? "", platform);
+  const pathext = platform === "win32" ? normalisePathext(env) : [];
+  const names = platform === "win32" ? ["soffice"] : ["soffice", "soffice.bin"];
+  for (const directory of pathEntries) {
+    for (const name of names) {
+      if (platform === "win32") {
+        for (const extension of pathext) {
+          raw.push({
+            path: api.join(directory, `${name}${extension}`),
+            source: "path"
+          });
+        }
+      } else {
+        raw.push({ path: api.join(directory, name), source: "path" });
+      }
+    }
+  }
+  for (const candidate of standardPaths(platform, env)) {
+    const source = platform === "win32" ? "standard-windows" : platform === "darwin" ? "standard-macos" : "standard-linux";
+    raw.push({ path: candidate, source });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const candidates = [];
+  for (const entry of raw) {
+    if (entry.path.includes("\0")) {
+      candidates.push({
+        path: entry.path,
+        source: entry.source,
+        exists: false,
+        rejected: "nul-byte"
+      });
+      continue;
+    }
+    const key = platform === "win32" ? entry.path.toLowerCase() : entry.path;
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    const rejected = rejectionFor(entry.path, entry.source, platform);
+    candidates.push({
+      path: entry.path,
+      source: entry.source,
+      exists: safeExists(exists, entry.path),
+      ...rejected ? { rejected } : {}
+    });
+  }
+  return candidates;
+}
+function libreOfficeStandardPaths(platform = process.platform, env = process.env) {
+  return standardPaths(platform, env);
+}
+function classifyLibreOfficeCandidate(candidate, platform = process.platform) {
+  return rejectionFor(candidate.path, candidate.source, platform);
+}
+function killChild(child) {
+  try {
+    child.kill("SIGKILL");
+  } catch {
+  }
+}
+function runProcess(command, args, options) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let stdout = "";
+    let stderr = "";
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
+    let settled = false;
+    let timedOut = false;
+    const timers = {};
+    let child;
+    const finish2 = (exitCode, signal, spawnError) => {
+      if (settled)
+        return;
+      settled = true;
+      if (timers.timeout)
+        clearTimeout(timers.timeout);
+      if (timers.hard)
+        clearTimeout(timers.hard);
+      const result = {
+        command,
+        args,
+        exitCode,
+        signal,
+        stdout: stdout.slice(0, MAX_CAPTURED_OUTPUT),
+        stderr: stderr.slice(0, MAX_CAPTURED_OUTPUT),
+        timedOut,
+        durationMs: Date.now() - started,
+        ...stdoutTruncated || stderrTruncated ? { outputTruncated: true } : {},
+        ...spawnError ? {
+          spawnError: {
+            code: spawnError.code ?? "UNKNOWN",
+            message: spawnError.message
+          }
+        } : {}
+      };
+      resolve(result);
+    };
+    try {
+      child = spawn(command, args, {
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        cwd: options.cwd,
+        env: options.env ? { ...process.env, ...options.env } : process.env
+      });
+    } catch (error) {
+      finish2(null, null, error);
+      return;
+    }
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      if (stdout.length + chunk.length > MAX_CAPTURED_OUTPUT) {
+        stdoutTruncated = true;
+        stdout += chunk.slice(0, Math.max(0, MAX_CAPTURED_OUTPUT - stdout.length));
+      } else {
+        stdout += chunk;
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      if (stderr.length + chunk.length > MAX_CAPTURED_OUTPUT) {
+        stderrTruncated = true;
+        stderr += chunk.slice(0, Math.max(0, MAX_CAPTURED_OUTPUT - stderr.length));
+      } else {
+        stderr += chunk;
+      }
+    });
+    child.on("error", (error) => finish2(null, null, error));
+    child.on("close", (code2, signal) => finish2(code2, signal));
+    timers.timeout = setTimeout(() => {
+      timedOut = true;
+      if (child)
+        killChild(child);
+      timers.hard = setTimeout(() => finish2(null, "SIGKILL"), 2e3);
+      timers.hard.unref?.();
+    }, options.timeoutMs);
+    timers.timeout.unref?.();
+  });
+}
+function launchSpecFor(candidatePath, source, platform) {
+  const rejected = rejectionFor(candidatePath, source, platform);
+  if (rejected && rejected !== "script-shim-not-auto-detected") {
+    return { rejection: rejected };
+  }
+  if (rejected === "script-shim-not-auto-detected") {
+    return { rejection: rejected };
+  }
+  const extension = pathApiFor(platform).extname(candidatePath).toLowerCase();
+  if (extension === ".js" || extension === ".mjs" || extension === ".cjs") {
+    return {
+      command: process.execPath,
+      prefixArgs: [candidatePath],
+      mode: "node-script"
+    };
+  }
+  return { command: candidatePath, prefixArgs: [], mode: "native" };
+}
+function parseVersion(stdout) {
+  const match = VERSION_PATTERN.exec(stdout);
+  return match?.[1];
+}
+function isDirectory(candidate) {
+  try {
+    return statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+}
+var detectionCache = /* @__PURE__ */ new Map();
+function clearLibreOfficeCache() {
+  detectionCache.clear();
+}
+function detectionCacheKey(env, platform) {
+  return [
+    platform,
+    environmentValue(env, "DSH_SOFFICE_PATH") ?? "",
+    environmentValue(env, "PATH") ?? environmentValue(env, "Path") ?? "",
+    environmentValue(env, "PATHEXT") ?? ""
+  ].join("\0");
+}
+var OPTION_KEYS = /* @__PURE__ */ new Set([
+  "env",
+  "platform",
+  "refresh",
+  "timeoutMs",
+  "exists"
+]);
+function looksLikeOptions(input) {
+  return Object.keys(input).some((key) => OPTION_KEYS.has(key));
+}
+async function detectLibreOffice(input = {}) {
+  const options = looksLikeOptions(input) && !Array.isArray(input) ? input : { env: input };
+  const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const key = detectionCacheKey(env, platform);
+  if (options.refresh !== true) {
+    const cached = detectionCache.get(key);
+    if (cached)
+      return { ...cached, cached: true };
+  } else {
+    detectionCache.delete(key);
+  }
+  const candidates = libreOfficeCandidates({
+    env,
+    platform,
+    exists: options.exists
+  });
+  const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? Math.min(options.timeoutMs, 6e4) : DEFAULT_DETECTION_TIMEOUT_MS;
+  const attempts = [];
+  const existing = candidates.filter((candidate) => candidate.exists);
+  let available;
+  for (const candidate of existing) {
+    if (candidate.rejected) {
+      attempts.push({
+        path: candidate.path,
+        reason: `candidate-rejected:${candidate.rejected}`
+      });
+      continue;
+    }
+    if (isDirectory(candidate.path)) {
+      attempts.push({ path: candidate.path, reason: "candidate-not-file" });
+      continue;
+    }
+    if (platform === "win32" && candidate.source !== "env" && candidate.path.toLowerCase().endsWith("soffice.exe")) {
+      const wrapper = `${candidate.path.slice(0, -4)}.com`;
+      const exists = options.exists ?? existsSync;
+      if (!safeExists(exists, wrapper)) {
+        attempts.push({
+          path: candidate.path,
+          reason: "windows-launcher-detaches"
+        });
+        continue;
+      }
+    }
+    const launch = launchSpecFor(candidate.path, candidate.source, platform);
+    if ("rejection" in launch) {
+      attempts.push({
+        path: candidate.path,
+        reason: `candidate-rejected:${launch.rejection}`
+      });
+      continue;
+    }
+    const probe = await runProcess(launch.command, [...launch.prefixArgs, "--version"], { timeoutMs, env });
+    if (probe.spawnError) {
+      attempts.push({
+        path: candidate.path,
+        reason: `spawn-${probe.spawnError.code.toLowerCase()}`,
+        probe
+      });
+      continue;
+    }
+    if (probe.timedOut) {
+      attempts.push({
+        path: candidate.path,
+        reason: "version-timeout",
+        probe
+      });
+      continue;
+    }
+    if (probe.exitCode !== 0) {
+      attempts.push({
+        path: candidate.path,
+        reason: "version-exit-nonzero",
+        probe
+      });
+      continue;
+    }
+    if (probe.stdout.trim().length === 0) {
+      attempts.push({
+        path: candidate.path,
+        reason: "version-empty",
+        probe
+      });
+      continue;
+    }
+    const version = parseVersion(probe.stdout);
+    if (!version) {
+      attempts.push({
+        path: candidate.path,
+        reason: "version-unrecognized",
+        probe
+      });
+      continue;
+    }
+    available = {
+      available: true,
+      path: candidate.path,
+      version,
+      source: candidate.source,
+      candidates,
+      attempts,
+      checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      installHint: LIBREOFFICE_INSTALL_HINT
+    };
+    break;
+  }
+  if (!available) {
+    let reason = "not-found";
+    if (existing.length > 0) {
+      reason = attempts.length > 0 ? attempts[attempts.length - 1].reason : "no-executable-candidate";
+    }
+    available = {
+      available: false,
+      path: null,
+      source: "none",
+      candidates,
+      reason,
+      attempts,
+      checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      installHint: LIBREOFFICE_INSTALL_HINT
+    };
+  }
+  detectionCache.set(key, available);
+  return available;
+}
+function resolveConversionFormat(format2) {
+  if (typeof format2 !== "string") {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "Conversion format must be a string", { format: format2 });
+  }
+  if (format2.includes("\0")) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "Conversion format must not contain NUL bytes");
+  }
+  const trimmed = format2.trim();
+  if (trimmed.length === 0 || trimmed.length > 160) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "Conversion format must be 1-160 characters", { length: trimmed.length });
+  }
+  if (/[\r\n]/.test(trimmed) || trimmed.includes("\0")) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "Conversion format must not contain control characters");
+  }
+  const match = /^([A-Za-z0-9]+)(?::(.*))?$/.exec(trimmed);
+  if (!match) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", `Unsupported conversion format: ${format2}`, { format: format2 });
+  }
+  const extension = match[1].toLowerCase();
+  const definition = LIBREOFFICE_CONVERSION_FORMATS[extension];
+  if (!definition) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", `LibreOffice conversion does not support '${extension}'`, { format: format2, supported: supportedLibreOfficeFormats() });
+  }
+  const explicitFilter = match[2]?.trim();
+  if (explicitFilter !== void 0 && explicitFilter.length === 0) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "An explicit LibreOffice filter must not be empty", { format: format2 });
+  }
+  if (explicitFilter !== void 0 && (explicitFilter.length > 120 || /[\r\n]/.test(explicitFilter) || explicitFilter.includes("\0"))) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "LibreOffice filter names must be 1-120 printable characters", { format: format2 });
+  }
+  const filter = explicitFilter ?? definition.filter;
+  return {
+    extension,
+    filter,
+    convertTo: `${extension}:${filter}`,
+    definition
+  };
+}
+function assertUsablePath(value, label) {
+  if (typeof value !== "string") {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `${label} must be a string`);
+  }
+  if (value.includes("\0")) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `${label} must not contain NUL bytes`);
+  }
+  if (value.length === 0) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `${label} must not be empty`);
+  }
+  if (value.length > MAX_PATH_LENGTH) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `${label} exceeds ${MAX_PATH_LENGTH} characters`, { length: value.length });
+  }
+  return value;
+}
+function normalizeConversionTimeout(value) {
+  if (value === void 0 || value === null) {
+    return DEFAULT_CONVERSION_TIMEOUT_MS;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", "timeoutMs must be a finite integer", { timeoutMs: value });
+  }
+  if (value < MIN_CONVERSION_TIMEOUT_MS || value > MAX_CONVERSION_TIMEOUT_MS) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `timeoutMs must be between ${MIN_CONVERSION_TIMEOUT_MS} and ${MAX_CONVERSION_TIMEOUT_MS}`, { timeoutMs: value });
+  }
+  return value;
+}
+function assertOutputExtension(outputPath, extension) {
+  const actual = path.extname(outputPath).slice(1).toLowerCase();
+  if (actual !== extension) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `Output extension .${actual || "(none)"} does not match requested format .${extension}`, { outputPath, extension });
+  }
+}
+function assertInsideWorkspace(workspaceRoot, outputPath) {
+  const root = path.resolve(workspaceRoot);
+  const target = path.resolve(outputPath);
+  const relative = path.relative(root, target);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new LibreOfficeError("PATH_OUTSIDE_WORKSPACE", "Conversion output must stay inside the workspace", { workspaceRoot: root, outputPath: target });
+  }
+}
+function tail(value, limit = 4e3) {
+  return value.length > limit ? value.slice(value.length - limit) : value;
+}
+function collectWarnings(stdout, stderr) {
+  const warnings = [];
+  for (const line of `${stdout}
+${stderr}`.split(/\r?\n/)) {
+    if (!/warn/i.test(line))
+      continue;
+    const trimmed = line.trim();
+    if (trimmed.length === 0)
+      continue;
+    if (warnings.includes(trimmed))
+      continue;
+    warnings.push(trimmed);
+    if (warnings.length >= 20)
+      break;
+  }
+  return warnings;
+}
+async function findProducedFile(outputDirectory, expectedName, extension) {
+  const expected = path.join(outputDirectory, expectedName);
+  try {
+    const info = await stat(expected);
+    if (info.isFile())
+      return expected;
+  } catch {
+  }
+  let entries = [];
+  try {
+    entries = await readdir(outputDirectory);
+  } catch {
+    return void 0;
+  }
+  const suffix = `.${extension}`.toLowerCase();
+  const matching = entries.filter((entry) => entry.toLowerCase().endsWith(suffix));
+  if (matching.length === 1) {
+    return path.join(outputDirectory, matching[0]);
+  }
+  return void 0;
+}
+async function performConversion(options) {
+  const inputPath = assertUsablePath(options.inputPath, "inputPath");
+  if (!path.isAbsolute(inputPath)) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", "inputPath must be absolute", { inputPath });
+  }
+  let inputInfo;
+  try {
+    inputInfo = await stat(inputPath);
+  } catch {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `Input file does not exist: ${inputPath}`, { inputPath });
+  }
+  if (!inputInfo.isFile()) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", `Input path is not a file: ${inputPath}`, { inputPath });
+  }
+  const inputExtension = path.extname(inputPath).slice(1).toLowerCase();
+  if (!supportedInputExtensions().has(inputExtension)) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", `Unsupported input extension .${inputExtension || "(none)"}`, { inputPath, supported: [...supportedInputExtensions()] });
+  }
+  const resolvedFormat = resolveConversionFormat(options.format);
+  if (!resolvedFormat.definition.inputExtensions.includes(inputExtension)) {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", `Cannot convert .${inputExtension} to ${resolvedFormat.extension}`, {
+      inputExtension,
+      format: resolvedFormat.extension,
+      supportedInputs: resolvedFormat.definition.inputExtensions
+    });
+  }
+  const timeoutMs = normalizeConversionTimeout(options.timeoutMs);
+  let outputPath;
+  if (options.outputPath !== void 0) {
+    outputPath = assertUsablePath(options.outputPath, "outputPath");
+    if (!path.isAbsolute(outputPath)) {
+      throw new LibreOfficeError("INVALID_ARGUMENT", "outputPath must be absolute", { outputPath });
+    }
+    assertOutputExtension(outputPath, resolvedFormat.extension);
+    if (options.workspaceRoot) {
+      assertInsideWorkspace(options.workspaceRoot, outputPath);
+    }
+    if (options.readOnly === true) {
+      throw new LibreOfficeError("READ_ONLY_MODE", "The workspace is read-only; external conversion cannot write output", { outputPath });
+    }
+    try {
+      const existing = await stat(outputPath);
+      if (existing.isDirectory()) {
+        throw new LibreOfficeError("INVALID_ARGUMENT", `Output path is a directory: ${outputPath}`, { outputPath });
+      }
+    } catch (error) {
+      if (error instanceof LibreOfficeError)
+        throw error;
+    }
+  }
+  const detection = options.detection ?? await detectLibreOffice({ env: options.env });
+  if (!detection.available || !detection.path) {
+    throw new LibreOfficeError("ENGINE_UNAVAILABLE", `LibreOffice is not available (${detection.reason ?? "not found"}); ${LIBREOFFICE_INSTALL_HINT}`, { detection });
+  }
+  const launch = launchSpecFor(detection.path, detection.source, process.platform);
+  if ("rejection" in launch) {
+    throw new LibreOfficeError("ENGINE_UNAVAILABLE", `The detected LibreOffice executable cannot be launched without a shell (${launch.rejection})`, { detection, rejection: launch.rejection });
+  }
+  const tempDirectory = options.tempDirectory ?? path.join(tmpdir(), "dsh-libreoffice-");
+  const tempRoot = await mkdtemp(tempDirectory).catch((error) => {
+    throw new LibreOfficeError("ENGINE_FAILED", `Could not create a temporary conversion directory: ${error.message}`);
+  });
+  const outDirectory = path.join(tempRoot, "out");
+  const userProfile = path.join(tempRoot, "profile");
+  const profileUrl = pathToFileURL(userProfile).href;
+  try {
+    await mkdir(outDirectory, { recursive: true });
+    await mkdir(userProfile, { recursive: true });
+    const args = [
+      `-env:UserInstallation=${profileUrl}`,
+      "--headless",
+      "--norestore",
+      "--nolockcheck",
+      "--nodefault",
+      "--convert-to",
+      resolvedFormat.convertTo,
+      "--outdir",
+      outDirectory,
+      inputPath
+    ];
+    const command = launch.command;
+    const fullArgs = [...launch.prefixArgs, ...args];
+    const started = Date.now();
+    const probe = await runProcess(command, fullArgs, {
+      timeoutMs,
+      env: options.env,
+      cwd: tempRoot
+    });
+    const durationMs = Date.now() - started;
+    if (probe.spawnError) {
+      throw new LibreOfficeError("ENGINE_UNAVAILABLE", `LibreOffice could not be started (${probe.spawnError.code}): ${probe.spawnError.message}`, {
+        detection,
+        executable: command,
+        spawnError: probe.spawnError
+      });
+    }
+    if (probe.timedOut) {
+      throw new LibreOfficeError("ENGINE_TIMEOUT", `LibreOffice conversion exceeded ${timeoutMs} ms and was killed`, {
+        timeoutMs,
+        durationMs,
+        executable: command,
+        args: fullArgs,
+        stdoutTail: tail(probe.stdout),
+        stderrTail: tail(probe.stderr),
+        detection
+      });
+    }
+    if (probe.exitCode !== 0 || probe.exitCode === null && probe.signal) {
+      throw new LibreOfficeError("ENGINE_FAILED", `LibreOffice exited with ${probe.signal ? `signal ${probe.signal}` : `code ${probe.exitCode}`}`, {
+        exitCode: probe.exitCode,
+        signal: probe.signal,
+        executable: command,
+        args: fullArgs,
+        stdoutTail: tail(probe.stdout),
+        stderrTail: tail(probe.stderr),
+        detection
+      });
+    }
+    const expectedName = `${path.parse(inputPath).name}.${resolvedFormat.extension}`;
+    const produced = await findProducedFile(outDirectory, expectedName, resolvedFormat.extension);
+    if (!produced) {
+      throw new LibreOfficeError("OUTPUT_MISSING", `LibreOffice reported success but produced no .${resolvedFormat.extension} file`, {
+        expectedName,
+        outDirectoryFiles: await readdir(outDirectory).catch(() => []),
+        executable: command,
+        args: fullArgs,
+        stdoutTail: tail(probe.stdout),
+        stderrTail: tail(probe.stderr)
+      });
+    }
+    let producedInfo;
+    try {
+      producedInfo = await stat(produced);
+    } catch {
+      throw new LibreOfficeError("OUTPUT_MISSING", `LibreOffice output disappeared before it could be read: ${produced}`, { produced, executable: command, args: fullArgs });
+    }
+    if (!producedInfo.isFile()) {
+      throw new LibreOfficeError("OUTPUT_MISSING", `LibreOffice output is not a file: ${produced}`, { produced, executable: command, args: fullArgs });
+    }
+    if (producedInfo.size === 0) {
+      throw new LibreOfficeError("OUTPUT_MISSING", `LibreOffice produced an empty file: ${produced}`, { produced, bytes: 0, executable: command, args: fullArgs });
+    }
+    const buffer = await readFile(produced).catch((error) => {
+      throw new LibreOfficeError("ENGINE_FAILED", `Could not read LibreOffice output: ${error.message}`, { produced });
+    });
+    const sha2562 = createHash2("sha256").update(buffer).digest("hex");
+    if (outputPath !== void 0) {
+      try {
+        await mkdir(path.dirname(outputPath), { recursive: true });
+        await writeFile(outputPath, buffer);
+      } catch (error) {
+        throw new LibreOfficeError("ENGINE_FAILED", `Could not write the converted file: ${error.message}`, { outputPath });
+      }
+    }
+    const result = {
+      ok: true,
+      engine: "libreoffice",
+      version: detection.version ?? null,
+      executable: detection.path,
+      format: resolvedFormat.extension,
+      filter: resolvedFormat.filter,
+      inputPath,
+      path: outputPath ?? null,
+      bytes: buffer.byteLength,
+      sha256: sha2562,
+      durationMs,
+      warnings: collectWarnings(probe.stdout, probe.stderr),
+      command: { executable: command, args: fullArgs },
+      userProfile: profileUrl,
+      stdout: probe.stdout,
+      stderr: probe.stderr,
+      ...outputPath === void 0 ? { dataBase64: buffer.toString("base64") } : {}
+    };
+    return { buffer, outputPath: outputPath ?? null, result, detection };
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+  }
+}
+async function convertWithLibreOffice(options) {
+  const { result } = await performConversion(options);
+  return result;
+}
+async function renderPdfWithLibreOffice(docxPath, options = {}) {
+  const validated = assertUsablePath(docxPath, "docxPath");
+  if (!path.isAbsolute(validated)) {
+    throw new LibreOfficeError("INVALID_ARGUMENT", "docxPath must be absolute", { docxPath: validated });
+  }
+  const extension = path.extname(validated).slice(1).toLowerCase();
+  if (extension !== "docx" && extension !== "dotx") {
+    throw new LibreOfficeError("FORMAT_UNSUPPORTED", "renderPdfWithLibreOffice expects a .docx or .dotx input", { docxPath: validated, extension });
+  }
+  const { result } = await performConversion({
+    ...options,
+    inputPath: validated,
+    format: "pdf"
+  });
+  const buffer = Buffer.from(result.dataBase64 ?? "", "base64");
+  return {
+    engine: "libreoffice",
+    bytes: buffer.byteLength,
+    sha256: result.sha256,
+    buffer,
+    dataBase64: result.dataBase64 ?? "",
+    durationMs: result.durationMs,
+    version: result.version,
+    path: null,
+    warnings: result.warnings
+  };
+}
+function countPdfPages(bytes) {
+  if (!bytes || bytes.byteLength === 0)
+    return void 0;
+  const text2 = bytes.toString("latin1");
+  if (!text2.includes("%PDF-"))
+    return void 0;
+  const matches = text2.match(/\/Type\s*\/Page(?![s])/g);
+  return matches ? matches.length : void 0;
+}
+async function readPdfSide(input, label, notes) {
+  let bytes;
+  let sourcePath = null;
+  if (Buffer.isBuffer(input)) {
+    bytes = input;
+  } else if (typeof input === "string" && input.length > 0) {
+    sourcePath = input;
+    try {
+      const info = await stat(input);
+      if (info.isFile())
+        bytes = await readFile(input);
+      else
+        notes.push(`${label}: path is not a file`);
+    } catch {
+      notes.push(`${label}: PDF path does not exist`);
+    }
+  }
+  if (!bytes || bytes.byteLength === 0) {
+    notes.push(`${label}: no PDF bytes were supplied`);
+    return {
+      present: false,
+      bytes: 0,
+      path: sourcePath,
+      reason: "missing"
+    };
+  }
+  const sha2562 = createHash2("sha256").update(bytes).digest("hex");
+  const pageCount = countPdfPages(bytes);
+  const isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+  if (!isPdf)
+    notes.push(`${label}: bytes do not start with %PDF-`);
+  return {
+    present: true,
+    bytes: bytes.byteLength,
+    sha256: sha2562,
+    ...pageCount === void 0 ? {} : { pageCount },
+    path: sourcePath,
+    ...isPdf ? {} : { reason: "not-pdf-magic" }
+  };
+}
+async function comparePdfEngines(input) {
+  const docxPath = assertUsablePath(input.docxPath, "docxPath");
+  const notes = [];
+  const internal = await readPdfSide(input.internalPdf, "internal PDF", notes);
+  const libreOffice = await readPdfSide(input.libreOfficeResult ? input.libreOfficeResult.buffer : input.libreOfficePdf, "LibreOffice PDF", notes);
+  if (internal.present && libreOffice.present) {
+    if (internal.pageCount === void 0 || libreOffice.pageCount === void 0) {
+      notes.push("page counts could not be parsed from at least one PDF");
+    }
+    if (internal.pageCount !== libreOffice.pageCount) {
+      notes.push(`page counts differ (internal ${internal.pageCount ?? "?"}, LibreOffice ${libreOffice.pageCount ?? "?"})`);
+    }
+  }
+  return {
+    docxPath,
+    internal,
+    libreoffice: libreOffice,
+    bothPresent: internal.present && libreOffice.present,
+    byteIdentical: internal.present && libreOffice.present && internal.sha256 === libreOffice.sha256,
+    pixelComparison: "not-performed",
+    notes,
+    checkedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
+// packages/core/dist/service/workspace.js
+import { mkdir as mkdir2, readFile as readFile2, readdir as readdir2, realpath, rename, rm as rm2, stat as stat2, writeFile as writeFile2, appendFile } from "node:fs/promises";
+import path2 from "node:path";
+import { createHash as createHash3 } from "node:crypto";
 var ServiceError = class extends Error {
   code;
   details;
@@ -195911,60 +197170,104 @@ var ServiceError = class extends Error {
   }
 };
 var ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-var Workspace = class {
+var Workspace = class _Workspace {
   root;
   readOnly;
   allowedReadRoots;
   auditPath;
   realRoot;
+  canonicalRootsCache;
+  documentLocks = /* @__PURE__ */ new Map();
   constructor(options) {
-    this.root = path.resolve(options.root);
+    this.root = path2.resolve(options.root);
     this.realRoot = this.root;
     this.readOnly = options.readOnly === true;
-    this.allowedReadRoots = (options.allowedReadRoots ?? []).map((entry) => path.resolve(entry));
-    this.auditPath = options.auditPath ? path.resolve(options.auditPath) : path.join(this.root, "audit.log");
+    this.allowedReadRoots = (options.allowedReadRoots ?? []).map((entry) => path2.resolve(entry));
+    this.auditPath = options.auditPath ? path2.resolve(options.auditPath) : path2.join(this.root, "audit.log");
   }
   async init() {
-    await mkdir(this.root, { recursive: true });
-    await mkdir(path.join(this.root, "documents"), { recursive: true });
+    await mkdir2(this.root, { recursive: true });
+    await mkdir2(path2.join(this.root, "documents"), { recursive: true });
   }
   documentDir(id2) {
     if (!ID_PATTERN.test(id2)) {
       throw new ServiceError("INVALID_DOCUMENT_ID", `Invalid document id: ${id2}`);
     }
-    const dir = path.join(this.root, "documents", id2);
+    const dir = path2.join(this.root, "documents", id2);
     this.assertInsideRoot(dir);
     return dir;
   }
   assertInsideRoot(candidate) {
-    const resolved = path.resolve(candidate);
-    const relative = path.relative(this.root, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    const resolved = path2.resolve(candidate);
+    const relative = path2.relative(this.root, resolved);
+    if (relative.startsWith("..") || path2.isAbsolute(relative)) {
       throw new ServiceError("PATH_TRAVERSAL", "Path escapes the workspace root");
     }
   }
   /** Validates an external read path against the workspace and allowed roots. */
   resolveReadPath(input) {
-    const resolved = path.resolve(input);
+    const resolved = path2.resolve(input);
     const allowed = [this.root, ...this.allowedReadRoots];
     for (const root of allowed) {
-      const relative = path.relative(root, resolved);
-      if (!relative.startsWith("..") && !path.isAbsolute(relative))
+      const relative = path2.relative(root, resolved);
+      if (!relative.startsWith("..") && !path2.isAbsolute(relative))
         return resolved;
     }
     throw new ServiceError("PATH_OUTSIDE_WORKSPACE", "File access is restricted to the workspace and configured read roots", { path: resolved });
   }
   /** Validates a path that will be written (workspace only). */
   resolveWritePath(input) {
-    const resolved = path.resolve(input);
+    const resolved = path2.resolve(input);
     this.assertInsideRoot(resolved);
     return resolved;
   }
+  static contains(root, candidate) {
+    const relative = path2.relative(root, candidate);
+    return relative === "" || !relative.startsWith("..") && !path2.isAbsolute(relative);
+  }
+  /**
+   * Canonical roots (symlinks/junctions resolved) used for containment checks.
+   * A root that cannot be resolved yet keeps its lexical form.
+   */
+  async canonicalRoots() {
+    if (this.canonicalRootsCache)
+      return this.canonicalRootsCache;
+    const roots = [this.root, ...this.allowedReadRoots];
+    const canonical = [];
+    for (const root of roots) {
+      try {
+        canonical.push(await realpath(root));
+      } catch {
+        canonical.push(path2.resolve(root));
+      }
+    }
+    this.canonicalRootsCache = canonical;
+    return canonical;
+  }
+  /**
+   * Validates an external read path and returns its canonical (realpath)
+   * location. Directory junctions and symlinks inside the workspace that point
+   * outside every configured root are rejected before the file is read.
+   */
+  async resolveReadPathCanonical(input) {
+    const resolved = this.resolveReadPath(input);
+    let canonical = resolved;
+    try {
+      canonical = await realpath(resolved);
+    } catch {
+      canonical = resolved;
+    }
+    const roots = await this.canonicalRoots();
+    if (!roots.some((root) => _Workspace.contains(root, canonical))) {
+      throw new ServiceError("PATH_OUTSIDE_WORKSPACE", "File access is restricted to the workspace and configured read roots", { path: canonical });
+    }
+    return canonical;
+  }
   async list() {
-    const dir = path.join(this.root, "documents");
+    const dir = path2.join(this.root, "documents");
     let entries = [];
     try {
-      entries = await readdir(dir);
+      entries = await readdir2(dir);
     } catch {
       return [];
     }
@@ -195973,7 +197276,7 @@ var Workspace = class {
       if (!ID_PATTERN.test(entry))
         continue;
       try {
-        const meta = await this.readJson(path.join(dir, entry, "record.json"));
+        const meta = await this.readJson(path2.join(dir, entry, "record.json"));
         if (meta)
           records.push(meta);
       } catch {
@@ -195983,7 +197286,7 @@ var Workspace = class {
   }
   async exists(id2) {
     try {
-      const info = await stat(this.documentDir(id2));
+      const info = await stat2(this.documentDir(id2));
       return info.isDirectory();
     } catch {
       return false;
@@ -195991,54 +197294,123 @@ var Workspace = class {
   }
   async readJson(file) {
     try {
-      const raw = await readFile(file, "utf8");
+      const raw = await readFile2(file, "utf8");
       return JSON.parse(raw);
     } catch {
       return void 0;
     }
   }
   async loadModel(id2) {
-    return this.readJson(path.join(this.documentDir(id2), "document.json"));
+    return this.readJson(path2.join(this.documentDir(id2), "document.json"));
   }
   async loadDocx(id2) {
     try {
-      return await readFile(path.join(this.documentDir(id2), "document.docx"));
+      return await readFile2(path2.join(this.documentDir(id2), "document.docx"));
     } catch {
       return void 0;
     }
   }
   async loadRecord(id2) {
-    return this.readJson(path.join(this.documentDir(id2), "record.json"));
+    return this.readJson(path2.join(this.documentDir(id2), "record.json"));
+  }
+  /**
+   * Serializes writers for one document so concurrent saves cannot interleave
+   * their stage/backup/rename steps.
+   */
+  async withDocumentLock(id2, work) {
+    const previous = this.documentLocks.get(id2) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => {
+      release = resolve;
+    });
+    const tail2 = previous.then(() => current);
+    this.documentLocks.set(id2, tail2);
+    await previous.catch(() => void 0);
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.documentLocks.get(id2) === tail2)
+        this.documentLocks.delete(id2);
+    }
   }
   async saveDocument(id2, document, docx, record) {
     this.assertWritable();
+    return this.withDocumentLock(id2, () => this.saveDocumentUnlocked(id2, document, docx, record));
+  }
+  async saveDocumentUnlocked(id2, document, docx, record) {
     const dir = this.documentDir(id2);
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, "document.json"), JSON.stringify(document), "utf8");
-    if (docx)
-      await writeFile(path.join(dir, "document.docx"), docx);
+    await mkdir2(dir, { recursive: true });
     const stored = {
       ...record,
       id: id2,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    await writeFile(path.join(dir, "record.json"), JSON.stringify(stored, null, 2), "utf8");
+    if (docx && !(docx.length >= 2 && docx[0] === 80 && docx[1] === 75)) {
+      throw new ServiceError("SAVE_FAILED", `Refusing to store a non-ZIP payload as document.docx for ${id2}`);
+    }
+    const files = [
+      { name: "document.json", data: JSON.stringify(document) },
+      ...docx ? [{ name: "document.docx", data: docx }] : [],
+      { name: "record.json", data: JSON.stringify(stored, null, 2) }
+    ];
+    const targets = files.map((file) => path2.join(dir, file.name));
+    for (let index = 0; index < targets.length; index += 1) {
+      const info = await stat2(targets[index]).catch(() => void 0);
+      if (info && !info.isFile()) {
+        throw new ServiceError("SAVE_FAILED", `Cannot save document ${id2}: ${files[index].name} is not a regular file`, { path: targets[index] });
+      }
+    }
+    const stamp = `${process.pid.toString(36)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const staged = [];
+    const backups = [];
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        const temp = `${targets[index]}.${stamp}.tmp`;
+        await writeFile2(temp, files[index].data);
+        staged.push(temp);
+      }
+      for (const target of targets) {
+        const info = await stat2(target).catch(() => void 0);
+        if (!info)
+          continue;
+        const backup = `${target}.${stamp}.bak`;
+        await rename(target, backup);
+        backups.push({ target, backup });
+      }
+      for (let index = 0; index < staged.length; index += 1) {
+        await rename(staged[index], targets[index]);
+      }
+    } catch (error) {
+      for (const { target, backup } of backups.reverse()) {
+        await rm2(target, { force: true }).catch(() => void 0);
+        await rename(backup, target).catch(() => void 0);
+      }
+      for (const temp of staged) {
+        await rm2(temp, { force: true }).catch(() => void 0);
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new ServiceError("SAVE_FAILED", `Could not save document ${id2}: ${detail}`, { path: dir });
+    }
+    for (const { backup } of backups) {
+      await rm2(backup, { force: true }).catch(() => void 0);
+    }
     return stored;
   }
   async deleteDocument(id2) {
     this.assertWritable();
-    await rm(this.documentDir(id2), { recursive: true, force: true });
+    await this.withDocumentLock(id2, () => rm2(this.documentDir(id2), { recursive: true, force: true }));
   }
   async readExternal(filePath) {
-    const resolved = this.resolveReadPath(filePath);
-    const info = await stat(resolved).catch(() => void 0);
+    const resolved = await this.resolveReadPathCanonical(filePath);
+    const info = await stat2(resolved).catch(() => void 0);
     if (!info || !info.isFile()) {
       throw new ServiceError("FILE_NOT_FOUND", `File not found: ${resolved}`);
     }
     if (info.size > 256 * 1024 * 1024) {
       throw new ServiceError("FILE_TOO_LARGE", "Document exceeds the 256 MiB limit", { size: info.size });
     }
-    return readFile(resolved);
+    return readFile2(resolved);
   }
   /** Appends an audit record. Content is never logged, only sizes and hashes. */
   async audit(event) {
@@ -196055,7 +197427,7 @@ var Workspace = class {
   }
   async readAudit(limit = 100) {
     try {
-      const raw = await readFile(this.auditPath, "utf8");
+      const raw = await readFile2(this.auditPath, "utf8");
       const lines = raw.trim().split(/\r?\n/).filter(Boolean);
       return lines.slice(-limit).map((line) => {
         try {
@@ -196069,7 +197441,7 @@ var Workspace = class {
     }
   }
   digest(buffer) {
-    return createHash2("sha256").update(buffer).digest("hex");
+    return createHash3("sha256").update(buffer).digest("hex");
   }
   assertWritable() {
     if (this.readOnly) {
@@ -196079,13 +197451,13 @@ var Workspace = class {
 };
 
 // packages/core/dist/service/service.js
-var DocumentService = class {
+var DocumentService = class _DocumentService {
   workspace;
   sessions = /* @__PURE__ */ new Map();
   maxImportBytes;
   constructor(options = {}) {
-    const root = options.workspaceRoot ?? process.env.DSH_DOC_WORKSPACE ?? path2.join(process.cwd(), ".dsh-doc-data");
-    const allowed = options.allowedReadRoots ?? (process.env.DSH_DOC_ALLOWED_ROOTS ? process.env.DSH_DOC_ALLOWED_ROOTS.split(path2.delimiter).filter(Boolean) : [process.cwd()]);
+    const root = options.workspaceRoot ?? process.env.DSH_DOC_WORKSPACE ?? path3.join(process.cwd(), ".dsh-doc-data");
+    const allowed = options.allowedReadRoots ?? (process.env.DSH_DOC_ALLOWED_ROOTS ? process.env.DSH_DOC_ALLOWED_ROOTS.split(path3.delimiter).filter(Boolean) : [process.cwd()]);
     this.workspace = new Workspace({
       root,
       allowedReadRoots: allowed,
@@ -196165,12 +197537,12 @@ var DocumentService = class {
     if (bytes.byteLength > this.maxMaxImport()) {
       throw new ServiceError("FILE_TOO_LARGE", "Document exceeds the configured import limit");
     }
-    const fileName = path2.basename(filePath);
+    const fileName = path3.basename(filePath);
     const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
     if (["docx", "dotx", "docm"].includes(extension)) {
       const imported = await importDocx(bytes, { fileName });
       const id3 = this.slugForPath(filePath);
-      this.register(id3, imported.document, extension, path2.resolve(filePath));
+      this.register(id3, imported.document, extension, path3.resolve(filePath));
       await this.workspace.audit({
         action: "document_open",
         documentId: id3,
@@ -196189,7 +197561,7 @@ var DocumentService = class {
     }
     const result = await formats.importAny(bytes, fileName);
     const id2 = this.slugForPath(filePath);
-    this.register(id2, result.document, extension, path2.resolve(filePath));
+    this.register(id2, result.document, extension, path3.resolve(filePath));
     await this.workspace.audit({
       action: "document_open",
       documentId: id2,
@@ -196214,7 +197586,7 @@ var DocumentService = class {
     return this.maxImportBytes;
   }
   slugForPath(filePath) {
-    const base = path2.basename(filePath).replace(/\.[^.]+$/, "");
+    const base = path3.basename(filePath).replace(/\.[^.]+$/, "");
     const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "document";
     return `${slug}-${Date.now().toString(36)}`.slice(0, 64);
   }
@@ -196222,22 +197594,25 @@ var DocumentService = class {
     this.workspace.assertWritable();
     const session = this.session(documentId);
     const target = filePath ? this.workspace.resolveWritePath(filePath) : this.workspace.documentDir(documentId);
-    const exported = await exportDocx(session.document, {
+    const snapshot = structuredClone(session.document);
+    const revisionAtSave = session.revision;
+    const exported = await exportDocx(snapshot, {
       preserveTimestamps: false
     });
-    const layout = this.layout(session);
+    const layout = layoutDocument(snapshot);
     if (filePath) {
-      await fsMkdir(path2.dirname(target), { recursive: true });
+      await fsMkdir(path3.dirname(target), { recursive: true });
       await fsWriteFile(target, exported.buffer);
     }
-    await this.workspace.saveDocument(documentId, session.document, exported.buffer, {
-      title: session.document.metadata.title ?? "Untitled document",
-      createdAt: session.document.metadata.created ?? session.createdAt,
+    await this.workspace.saveDocument(documentId, snapshot, exported.buffer, {
+      title: snapshot.metadata.title ?? "Untitled document",
+      createdAt: snapshot.metadata.created ?? session.createdAt,
       sourceFormat: "docx",
-      wordCount: countWords3(documentText(session.document)),
+      wordCount: countWords3(documentText(snapshot)),
       pageCount: layout.pageCount
     });
-    session.dirty = false;
+    if (session.revision === revisionAtSave)
+      session.dirty = false;
     const savedAt = (/* @__PURE__ */ new Date()).toISOString();
     await this.workspace.audit({
       action: "document_save",
@@ -196246,15 +197621,16 @@ var DocumentService = class {
       detail: { bytes: exported.buffer.byteLength }
     });
     return {
-      path: filePath ? target : path2.join(this.workspace.documentDir(documentId), "document.docx"),
+      path: filePath ? target : path3.join(this.workspace.documentDir(documentId), "document.docx"),
       savedAt,
       bytes: exported.buffer.byteLength
     };
   }
   async saveDocumentAs(documentId, filePath) {
+    this.workspace.assertWritable();
     const target = this.workspace.resolveWritePath(filePath);
     const session = this.session(documentId);
-    const extension = path2.extname(target).slice(1).toLowerCase();
+    const extension = path3.extname(target).slice(1).toLowerCase();
     if (extension === "docx" || extension === "dotx" || extension === "docm") {
       return this.saveDocument(documentId, target);
     }
@@ -196262,7 +197638,7 @@ var DocumentService = class {
     if (!formats)
       throw new ServiceError("FORMAT_UNAVAILABLE", `No exporter is available for .${extension}`);
     const result = await formats.exportAny(session.document, extension);
-    await fsMkdir(path2.dirname(target), { recursive: true });
+    await fsMkdir(path3.dirname(target), { recursive: true });
     await fsWriteFile(target, result.buffer);
     await this.workspace.audit({
       action: "document_save_as",
@@ -196487,24 +197863,65 @@ var DocumentService = class {
     return { matches, total: matches.length };
   }
   /* -------------------------------------------------------------- editing */
-  resolvePosition(doc, position) {
+  /**
+   * Validates a caller-supplied position before a mutation or a read.
+   *
+   * Positions are never silently clamped: a reversed, negative, non-finite or
+   * out-of-text position raises a typed `INVALID_RANGE`, so callers cannot end
+   * up with a partially applied edit.
+   */
+  validatePosition(doc, position) {
     const located = findParagraph(doc, position.blockId);
     if (!located)
       throw new ServiceError("BLOCK_NOT_FOUND", `Unknown paragraph: ${position.blockId}`);
-    if (position.inlineIndex !== void 0) {
-      return {
-        blockId: position.blockId,
-        inlineIndex: Math.max(0, position.inlineIndex),
-        offset: Math.max(0, position.offset ?? 0)
-      };
+    const paragraph2 = located.paragraph;
+    const inlineIndex = position.inlineIndex;
+    if (inlineIndex !== void 0) {
+      if (!Number.isInteger(inlineIndex) || inlineIndex < 0 || inlineIndex > paragraph2.inlines.length) {
+        throw new ServiceError("INVALID_RANGE", `inlineIndex ${inlineIndex} is out of bounds for paragraph ${position.blockId}`);
+      }
     }
-    return textOffsetToPosition(located.paragraph, Math.max(0, position.offset ?? 0));
+    const offset = position.offset ?? 0;
+    if (!Number.isFinite(offset) || offset < 0) {
+      throw new ServiceError("INVALID_RANGE", `offset ${offset} is out of bounds for paragraph ${position.blockId}`);
+    }
+    if (inlineIndex !== void 0) {
+      const inline2 = paragraph2.inlines[inlineIndex];
+      const max = inline2 ? inline2.type === "text" ? inline2.text.length : 0 : 0;
+      if (offset > max) {
+        throw new ServiceError("INVALID_RANGE", `offset ${offset} is out of bounds for paragraph ${position.blockId}`);
+      }
+      return { blockId: position.blockId, inlineIndex, offset };
+    }
+    const total = paragraph2.inlines.reduce((sum, inline2) => sum + inlineLength(inline2), 0);
+    if (offset > total) {
+      throw new ServiceError("INVALID_RANGE", `offset ${offset} is out of bounds for paragraph ${position.blockId}`);
+    }
+    return textOffsetToPosition(paragraph2, offset);
+  }
+  resolvePosition(doc, position) {
+    return this.validatePosition(doc, position);
+  }
+  static positionFollows(start, end) {
+    if (start.inlineIndex !== end.inlineIndex)
+      return start.inlineIndex > end.inlineIndex;
+    return start.offset > end.offset;
   }
   resolveRange(doc, range) {
-    return {
-      start: this.resolvePosition(doc, range.start),
-      end: this.resolvePosition(doc, range.end)
-    };
+    const start = this.validatePosition(doc, range.start);
+    const end = this.validatePosition(doc, range.end);
+    const order = /* @__PURE__ */ new Map();
+    listBlocks(doc).forEach((entry, index) => {
+      order.set(entry.block.id, index);
+    });
+    const startOrder = order.get(start.blockId);
+    const endOrder = order.get(end.blockId);
+    if (startOrder === void 0 || endOrder === void 0)
+      throw new ServiceError("BLOCK_NOT_FOUND", `Unknown paragraph: ${startOrder === void 0 ? start.blockId : end.blockId}`);
+    const reversed = startOrder > endOrder || startOrder === endOrder && _DocumentService.positionFollows(start, end);
+    if (reversed)
+      throw new ServiceError("INVALID_RANGE", "Range end precedes its start");
+    return { start, end };
   }
   offsetOf(paragraph2, position) {
     let offset = 0;
@@ -196650,6 +198067,7 @@ var DocumentService = class {
       case "mergeCells":
         if (!input.region)
           throw new ServiceError("INVALID_ARGUMENT", "mergeCells requires region");
+        this.assertMergeRegion(table2, input.region);
         result = mergeCells(session.document, input.tableId, input.region);
         break;
       case "splitCell":
@@ -196667,6 +198085,47 @@ var DocumentService = class {
     return this.afterMutation(session, "document_edit_table", result, {
       operation: input.operation
     });
+  }
+  /**
+   * Rejects merge regions that the model would otherwise clamp: reversed or
+   * non-integer bounds, coordinates outside the grid, and regions that overlap
+   * a cell that is already merged.
+   */
+  assertMergeRegion(table2, region) {
+    const bounds = [
+      region.startRow,
+      region.endRow,
+      region.startColumn,
+      region.endColumn
+    ];
+    if (bounds.some((value) => !Number.isInteger(value))) {
+      throw new ServiceError("INVALID_RANGE", "mergeCells region bounds must be integers");
+    }
+    const { startRow, endRow, startColumn, endColumn } = region;
+    if (startRow < 0 || startColumn < 0) {
+      throw new ServiceError("INVALID_RANGE", "mergeCells region must not start before the first row/column");
+    }
+    if (endRow < startRow || endColumn < startColumn) {
+      throw new ServiceError("INVALID_RANGE", "mergeCells region end precedes its start");
+    }
+    if (endRow >= table2.rows.length) {
+      throw new ServiceError("INVALID_RANGE", `mergeCells row ${endRow} is outside the table (${table2.rows.length} rows)`);
+    }
+    for (let rowIndex = startRow; rowIndex <= endRow; rowIndex += 1) {
+      const row = table2.rows[rowIndex];
+      if (!row || endColumn >= row.cells.length) {
+        throw new ServiceError("INVALID_RANGE", `mergeCells column is outside the table at row ${rowIndex}`);
+      }
+      for (let columnIndex2 = startColumn; columnIndex2 <= endColumn; columnIndex2 += 1) {
+        const cell = row.cells[columnIndex2];
+        if (!cell) {
+          throw new ServiceError("INVALID_RANGE", `mergeCells column ${columnIndex2} is outside row ${rowIndex}`);
+        }
+        if ((cell.props.gridSpan ?? 1) > 1 || cell.props.vMerge) {
+          throw new ServiceError("INVALID_RANGE", `mergeCells region overlaps an existing merge at ${rowIndex}:${columnIndex2}`);
+        }
+      }
+    }
   }
   async insertImage(documentId, input) {
     const session = this.session(documentId);
@@ -196746,6 +198205,9 @@ var DocumentService = class {
       orientation: input.landscape ? "landscape" : "portrait"
     } : void 0;
     const result = insertSectionBreak(session.document, { sectionIndex, blockIndex }, { type: input.type ?? "nextPage", page });
+    if (!hasUniqueStructuralIds(session.document)) {
+      throw new ServiceError("INVALID_STATE", "Section break produced duplicate structural ids");
+    }
     if (input.landscape !== void 0) {
       session.document.sections[result.sectionIndex].page.orientation = input.landscape ? "landscape" : "portrait";
     }
@@ -196764,17 +198226,58 @@ var DocumentService = class {
   setPageLayout(documentId, input) {
     const session = this.session(documentId);
     const sectionIndex = input.sectionIndex ?? 0;
+    const section = session.document.sections[sectionIndex];
+    if (!section) {
+      throw new ServiceError("SECTION_NOT_FOUND", `Unknown section: ${sectionIndex}`);
+    }
+    if (input.page) {
+      const page = input.page;
+      if (page.orientation !== void 0 && page.orientation !== "portrait" && page.orientation !== "landscape") {
+        throw new ServiceError("INVALID_ARGUMENT", `Unknown orientation: ${String(page.orientation)}`);
+      }
+      for (const key of ["width", "height"]) {
+        const value = page[key];
+        if (value !== void 0 && (!Number.isFinite(value) || value <= 0)) {
+          throw new ServiceError("INVALID_ARGUMENT", `Page ${key} must be a positive finite number`);
+        }
+      }
+      const margins = page.margins ?? {};
+      for (const [edge, value] of Object.entries(margins)) {
+        if (value === void 0)
+          continue;
+        if (!Number.isFinite(value)) {
+          throw new ServiceError("INVALID_ARGUMENT", `Page margin ${edge} must be a finite number`);
+        }
+        const mustBePositive = ["top", "right", "bottom", "left"].includes(edge);
+        if (mustBePositive ? value <= 0 : value < 0) {
+          throw new ServiceError("INVALID_ARGUMENT", `Page margin ${edge} must be ${mustBePositive ? "greater than zero" : "non-negative"}`);
+        }
+      }
+    }
+    if (input.columns) {
+      if (!Number.isInteger(input.columns.count) || input.columns.count < 1) {
+        throw new ServiceError("INVALID_ARGUMENT", `Column count must be at least 1 (received ${String(input.columns.count)})`);
+      }
+      if (!Number.isFinite(input.columns.space) || input.columns.space < 0) {
+        throw new ServiceError("INVALID_ARGUMENT", "Column spacing must be a non-negative finite number");
+      }
+    }
+    const previousPage = structuredClone(section.page);
     if (input.page)
       setPageSetup(session.document, sectionIndex, input.page);
     if (input.columns)
       setColumns(session.document, sectionIndex, input.columns);
+    const applied = session.document.sections[sectionIndex];
+    const fits = applied.page.margins.left + applied.page.margins.right < applied.page.width && applied.page.margins.top + applied.page.margins.bottom < applied.page.height;
+    if (!fits) {
+      applied.page = previousPage;
+      throw new ServiceError("INVALID_ARGUMENT", "Page margins do not fit inside the page");
+    }
     if (input.pageNumbers) {
-      const section = session.document.sections[sectionIndex];
-      if (section)
-        section.pageNumbering = {
-          ...section.pageNumbering ?? {},
-          ...input.pageNumbers
-        };
+      applied.pageNumbering = {
+        ...applied.pageNumbering ?? {},
+        ...input.pageNumbers
+      };
     }
     return this.afterMutation(session, "document_layout", { sectionIndex });
   }
@@ -196935,6 +198438,8 @@ var DocumentService = class {
   }
   /* ---------------------------------------------------------- conversion */
   async convert(input) {
+    if (input.outputPath)
+      this.workspace.assertWritable();
     const convert2 = await this.tryConvert();
     if (!convert2)
       throw new ServiceError("CONVERSION_UNAVAILABLE", "Conversion engine is not available");
@@ -196950,7 +198455,7 @@ var DocumentService = class {
     const result = await convert2.convert(document, { to: input.to });
     if (input.outputPath) {
       const target = this.workspace.resolveWritePath(input.outputPath);
-      await fsMkdir(path2.dirname(target), { recursive: true });
+      await fsMkdir(path3.dirname(target), { recursive: true });
       await fsWriteFile(target, result.buffer);
     }
     await this.workspace.audit({
@@ -196969,6 +198474,8 @@ var DocumentService = class {
     };
   }
   async exportPdf(documentId, outputPath) {
+    if (outputPath)
+      this.workspace.assertWritable();
     const session = this.session(documentId);
     const render = await Promise.resolve().then(() => (init_render(), render_exports));
     const layout = this.layout(session);
@@ -196979,7 +198486,7 @@ var DocumentService = class {
     });
     if (outputPath) {
       const target = this.workspace.resolveWritePath(outputPath);
-      await fsMkdir(path2.dirname(target), { recursive: true });
+      await fsMkdir(path3.dirname(target), { recursive: true });
       await fsWriteFile(target, buffer);
       await this.workspace.audit({
         action: "document_export_pdf",
@@ -197001,6 +198508,8 @@ var DocumentService = class {
     };
   }
   async exportDocument(documentId, format2, outputPath) {
+    if (outputPath)
+      this.workspace.assertWritable();
     const session = this.session(documentId);
     const normalized = format2.toLowerCase().replace(/^\./, "");
     if (normalized === "docx" || normalized === "dotx" || normalized === "docm") {
@@ -197009,7 +198518,7 @@ var DocumentService = class {
       });
       if (outputPath) {
         const target = this.workspace.resolveWritePath(outputPath);
-        await fsMkdir(path2.dirname(target), { recursive: true });
+        await fsMkdir(path3.dirname(target), { recursive: true });
         await fsWriteFile(target, exported.buffer);
         return {
           format: normalized,
@@ -197032,7 +198541,7 @@ var DocumentService = class {
     const result = await formats.exportAny(session.document, normalized);
     if (outputPath) {
       const target = this.workspace.resolveWritePath(outputPath);
-      await fsMkdir(path2.dirname(target), { recursive: true });
+      await fsMkdir(path3.dirname(target), { recursive: true });
       await fsWriteFile(target, result.buffer);
       return {
         format: normalized,
@@ -197048,6 +198557,118 @@ var DocumentService = class {
       dataBase64: result.buffer.toString("base64"),
       losses: result.losses ?? []
     };
+  }
+  /**
+   * Reports the optional external engines. Always resolves: an absent
+   * LibreOffice install is reported as `available: false` together with the
+   * detection evidence (candidates, probe attempts and a stable reason), never
+   * as a silent capability.
+   */
+  async engineStatus(options = {}) {
+    const detection = await detectLibreOffice({
+      refresh: options.refresh === true
+    });
+    const listed = await this.listFormats();
+    const internalImport = new Set((listed.import ?? []).map((entry) => entry.toLowerCase()));
+    const internalExport = new Set((listed.export ?? []).map((entry) => entry.toLowerCase()));
+    const libreOfficeImport = new Set(Object.values(LIBREOFFICE_CONVERSION_FORMATS).flatMap((definition) => [
+      ...definition.inputExtensions
+    ]));
+    const formats = [
+      .../* @__PURE__ */ new Set([
+        ...supportedLibreOfficeFormats(),
+        ...internalImport,
+        ...internalExport
+      ])
+    ].sort();
+    const capabilities = formats.map((format2) => ({
+      format: format2,
+      internal: {
+        import: internalImport.has(format2),
+        export: internalExport.has(format2)
+      },
+      libreoffice: {
+        available: detection.available,
+        import: detection.available && libreOfficeImport.has(format2),
+        export: detection.available && Object.hasOwn(LIBREOFFICE_CONVERSION_FORMATS, format2)
+      }
+    }));
+    return {
+      available: detection.available,
+      reason: detection.available ? null : detection.reason ?? "not-found",
+      checkedAt: detection.checkedAt,
+      installHint: LIBREOFFICE_INSTALL_HINT,
+      workspace: { readOnly: this.workspace.readOnly },
+      engines: {
+        internal: {
+          id: "internal",
+          available: true,
+          name: "Built-in layout/PDF renderer and format adapters",
+          pdf: { export: true, import: false, pixelAccurate: false },
+          note: "PDF export is produced by the internal layout engine; it is not a LibreOffice render."
+        },
+        libreoffice: {
+          id: "libreoffice",
+          available: detection.available,
+          path: detection.path,
+          version: detection.version ?? null,
+          source: detection.source,
+          reason: detection.available ? null : detection.reason ?? "not-found",
+          detection
+        }
+      },
+      capabilities
+    };
+  }
+  /**
+   * Converts a document through the optional LibreOffice engine. Input may be
+   * read from the workspace or any configured read root; a requested output
+   * path must stay inside the workspace and is refused in read-only mode.
+   * Every LibreOffice failure keeps its typed code and detection evidence.
+   */
+  async convertWithExternalEngine(input) {
+    if (typeof input.inputPath !== "string" || input.inputPath.trim().length === 0) {
+      throw new ServiceError("INVALID_ARGUMENT", "inputPath is required for external conversion");
+    }
+    const inputPath = this.workspace.resolveReadPath(input.inputPath);
+    let outputPath;
+    if (input.outputPath !== void 0) {
+      if (typeof input.outputPath !== "string" || input.outputPath.trim().length === 0) {
+        throw new ServiceError("INVALID_ARGUMENT", "outputPath must be a non-empty string when supplied");
+      }
+      this.workspace.assertWritable();
+      outputPath = this.workspace.resolveWritePath(input.outputPath);
+    }
+    try {
+      const result = await convertWithLibreOffice({
+        inputPath,
+        format: typeof input.format === "string" ? input.format : String(input.format),
+        ...outputPath === void 0 ? {} : { outputPath },
+        ...input.timeoutMs === void 0 ? {} : { timeoutMs: input.timeoutMs },
+        workspaceRoot: this.workspace.root,
+        readOnly: this.workspace.readOnly
+      });
+      await this.workspace.audit({
+        action: "document_convert_external",
+        outcome: "ok",
+        detail: {
+          format: result.format,
+          bytes: result.bytes,
+          output: outputPath !== void 0
+        }
+      });
+      return result;
+    } catch (error) {
+      if (error instanceof LibreOfficeError) {
+        await this.workspace.audit({
+          action: "document_convert_external",
+          outcome: "error",
+          detail: { code: error.code, format: input.format }
+        });
+        throw new ServiceError(error.code, error.message, error.details);
+      }
+      throw error;
+    }
   }
   async listFormats() {
     const formats = await this.tryFormats();
@@ -197674,8 +199295,8 @@ function getErrorMap() {
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -197791,11 +199412,11 @@ var errorUtil;
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -203162,6 +204783,33 @@ tool({
   handler: async ({ service }, args) => service.exportDocument(String(args.documentId), String(args.format), args.outputPath ? String(args.outputPath) : void 0)
 });
 tool({
+  name: "document_engine_status",
+  title: "External engine status",
+  category: "conversion",
+  description: "Reports whether the optional LibreOffice engine is installed and usable, alongside the internal engine capability matrix. When LibreOffice is absent the result is available:false with the detection evidence and reason; it never claims a converter that does not exist.",
+  inputSchema: {},
+  handler: async ({ service }) => service.engineStatus()
+});
+tool({
+  name: "document_convert_external",
+  title: "Convert with LibreOffice",
+  category: "conversion",
+  mutating: true,
+  description: "Converts a document through an installed LibreOffice binary (docx, odt, rtf, txt, html, pdf). Reports ENGINE_UNAVAILABLE with detection evidence when LibreOffice is not installed. An output path must stay inside the workspace and is refused in read-only mode.",
+  inputSchema: {
+    inputPath: external_exports.string().min(1).max(4096).describe("Absolute path of an existing document to convert"),
+    format: external_exports.string().min(1).max(160).describe("Target format: docx, odt, rtf, txt, html, pdf, or ext:Filter Name"),
+    outputPath: external_exports.string().max(4096).optional().describe("Optional workspace path for the converted file"),
+    timeoutMs: external_exports.number().int().min(50).max(6e5).optional()
+  },
+  handler: async ({ service }, args) => service.convertWithExternalEngine({
+    inputPath: String(args.inputPath ?? ""),
+    format: String(args.format ?? ""),
+    ...args.outputPath === void 0 ? {} : { outputPath: String(args.outputPath) },
+    ...args.timeoutMs === void 0 ? {} : { timeoutMs: Number(args.timeoutMs) }
+  })
+});
+tool({
   name: "document_ai_summarize",
   title: "AI summarize",
   category: "ai",
@@ -203311,15 +204959,26 @@ init_query();
 init_layout();
 init_render();
 export {
+  DEFAULT_CONVERSION_TIMEOUT_MS,
+  DEFAULT_DETECTION_TIMEOUT_MS,
   DocumentService,
+  LIBREOFFICE_CONVERSION_FORMATS,
+  LIBREOFFICE_INSTALL_HINT,
+  LibreOfficeError,
   PAGE_PRESETS,
   ServiceError,
   Workspace,
   availableFormats,
   buildToolManifest,
+  classifyLibreOfficeCandidate,
+  clearLibreOfficeCache,
+  comparePdfEngines,
   convert,
+  convertWithLibreOffice,
+  countPdfPages,
   createDocument,
   detectFormat,
+  detectLibreOffice,
   documentOutline,
   documentStats,
   documentText,
@@ -203328,10 +204987,16 @@ export {
   importAny,
   invokeTool,
   layoutDocument,
+  libreOfficeCandidates,
+  libreOfficeStandardPaths,
   listTools,
+  normalizeConversionTimeout,
   providerStatus,
   renderHtml,
   renderPdf,
+  renderPdfWithLibreOffice,
+  resolveConversionFormat,
   reviewDocument,
-  searchDocument
+  searchDocument,
+  supportedLibreOfficeFormats
 };

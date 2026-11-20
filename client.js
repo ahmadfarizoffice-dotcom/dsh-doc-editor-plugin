@@ -205,12 +205,533 @@ window.__ModuleLoader__.load({
       undo: "Ctrl+Z",
       redo: "Ctrl+Y",
       bold: "Ctrl+B",
+      boldAlt: "Ctrl+Shift+B",
       italic: "Ctrl+I",
       underline: "Ctrl+U",
       find: "Ctrl+F",
       selectAll: "Ctrl+A",
       save: "Ctrl+S",
+      open: "Ctrl+O",
+      hyperlink: "Ctrl+K",
+      numbering: "Ctrl+Shift+7",
+      bullets: "Ctrl+Shift+8",
     };
+
+    /**
+     * The panel's own keyboard commands.
+     *
+     * `code` is the physical key (`KeyboardEvent.code`), never `event.key`:
+     * Shift+7 reports "&" as `key` on a US layout and a dead key elsewhere,
+     * while the physical key stays `Digit7`. `mod` is Ctrl or Cmd.
+     *
+     * `scope` is the input owner a command may consume:
+     *   - `editable` — the document must own the caret (formatting, history,
+     *     select all, link, lists).
+     *   - `panel` — any focus inside the panel root (save, find, open).
+     * `repeat` decides whether an auto-repeated key runs the command again:
+     * history may repeat, a formatting toggle must not (a held Ctrl+B would
+     * otherwise flip on and off dozens of times).
+     */
+    const SHORTCUT_TABLE = [
+      {
+        id: "bold",
+        code: "KeyB",
+        scope: "editable",
+        repeat: false,
+        action: "bold",
+        label: "Ctrl+B",
+      },
+      {
+        id: "boldShift",
+        code: "KeyB",
+        shift: true,
+        scope: "editable",
+        repeat: false,
+        action: "bold",
+        label: "Ctrl+Shift+B",
+      },
+      {
+        id: "italic",
+        code: "KeyI",
+        scope: "editable",
+        repeat: false,
+        action: "italic",
+        label: "Ctrl+I",
+      },
+      {
+        id: "underline",
+        code: "KeyU",
+        scope: "editable",
+        repeat: false,
+        action: "underline",
+        label: "Ctrl+U",
+      },
+      {
+        id: "undo",
+        code: "KeyZ",
+        scope: "editable",
+        repeat: true,
+        action: "undo",
+        label: "Ctrl+Z",
+      },
+      {
+        id: "redo",
+        code: "KeyY",
+        scope: "editable",
+        repeat: true,
+        action: "redo",
+        label: "Ctrl+Y",
+      },
+      {
+        id: "redoShift",
+        code: "KeyZ",
+        shift: true,
+        scope: "editable",
+        repeat: true,
+        action: "redo",
+        label: "Ctrl+Shift+Z",
+      },
+      {
+        id: "save",
+        code: "KeyS",
+        scope: "panel",
+        repeat: false,
+        action: "save",
+        label: "Ctrl+S",
+      },
+      {
+        id: "find",
+        code: "KeyF",
+        scope: "panel",
+        repeat: false,
+        action: "find",
+        label: "Ctrl+F",
+      },
+      {
+        id: "selectAll",
+        code: "KeyA",
+        scope: "editable",
+        repeat: true,
+        action: "selectAll",
+        label: "Ctrl+A",
+      },
+      {
+        id: "open",
+        code: "KeyO",
+        scope: "panel",
+        repeat: false,
+        action: "open",
+        label: "Ctrl+O",
+      },
+      {
+        id: "link",
+        code: "KeyK",
+        scope: "editable",
+        repeat: false,
+        action: "link",
+        label: "Ctrl+K",
+      },
+      {
+        id: "numberedList",
+        code: "Digit7",
+        shift: true,
+        scope: "editable",
+        repeat: false,
+        action: "numbering",
+        label: "Ctrl+Shift+7",
+      },
+      {
+        id: "bulletList",
+        code: "Digit8",
+        shift: true,
+        scope: "editable",
+        repeat: false,
+        action: "bullets",
+        label: "Ctrl+Shift+8",
+      },
+    ];
+
+    /** Shown when the host already owns Ctrl+B (Desktop Windows/macOS). */
+    const BOLD_RESERVED_NOTE =
+      "Ctrl+B is reserved by DeepSeek Harness (sidebar toggle). " +
+      "Use Ctrl+Shift+B, or remap it in Settings → Shortcuts.";
+
+    /** Once per page session, not once per panel mount. */
+    let boldReservedNoticeShown = false;
+
+    /**
+     * Whether the host catalog already binds primary+KeyB to one of its own
+     * commands. That binding is consumed by the Desktop main process before the
+     * renderer (and outranks local regions in the registry), so the panel must
+     * advertise the Ctrl+Shift+B fallback instead of pretending Ctrl+B works.
+     */
+    function detectBoldReservation(service) {
+      if (!service) return false;
+      const ours = new Set(["docEditor.bold", "docEditor.boldShift"]);
+      try {
+        if (
+          service.catalog &&
+          typeof service.catalog.getSnapshot === "function"
+        ) {
+          const rows = service.catalog.getSnapshot() || [];
+          for (const row of rows) {
+            if (!row || ours.has(row.id)) continue;
+            const binding = row.binding || null;
+            if (binding && binding.code === "KeyB") {
+              const modifiers = Array.isArray(binding.modifiers)
+                ? binding.modifiers
+                : [];
+              const plain =
+                modifiers.includes("primary") &&
+                !modifiers.includes("shift") &&
+                !modifiers.includes("alt");
+              if (plain) return true;
+            }
+          }
+        }
+        if (typeof service.describeBinding === "function") {
+          const probe = service.describeBinding({
+            code: "KeyB",
+            modifiers: ["primary"],
+          });
+          const conflicts = (probe && probe.conflicts) || [];
+          if (conflicts.some((id) => !ours.has(id))) return true;
+        }
+      } catch (_error) {
+        /* an unreadable catalog cannot prove a reservation */
+      }
+      return false;
+    }
+
+    /** Stable per-command identity for the DSH `shortcuts` service. */
+    const SHORTCUT_COMMAND_PREFIX = "docEditor.";
+
+    /**
+     * Swap `Control` for the device primary modifier, so the same table works on
+     * macOS (Cmd) and Windows/Linux (Ctrl) without branching at the call site.
+     */
+    function shortcutCommandDefaults(entry, primary) {
+      const modifiers = [primary];
+      if (entry.shift) modifiers.push("shift");
+      return {
+        "desktop:macos": { code: entry.code, modifiers },
+        "desktop:windows": { code: entry.code, modifiers },
+        "desktop:linux": { code: entry.code, modifiers },
+      };
+    }
+
+    /**
+     * Whether a native or React-synthetic event is part of an IME composition.
+     * React's SyntheticEvent does not expose `isComposing`, so the native event
+     * has to be consulted or an IME key would look like a shortcut.
+     */
+    function eventIsComposing(event) {
+      if (!event) return false;
+      if (event.isComposing === true) return true;
+      return Boolean(
+        event.nativeEvent && event.nativeEvent.isComposing === true,
+      );
+    }
+
+    /**
+     * Normalise a keyboard event into the facts the matcher needs, so the
+     * predicate is a pure function of data that tests can build directly.
+     */
+    function shortcutCombo(event) {
+      if (!event || typeof event !== "object") return null;
+      return {
+        code: typeof event.code === "string" ? event.code : "",
+        key: typeof event.key === "string" ? event.key : "",
+        mod: Boolean(event.ctrlKey || event.metaKey),
+        control: Boolean(event.ctrlKey),
+        meta: Boolean(event.metaKey),
+        shift: Boolean(event.shiftKey),
+        alt: Boolean(event.altKey),
+      };
+    }
+
+    /** The table row a normalised combo selects, or null. Pure. */
+    function shortcutForCombo(combo) {
+      if (!combo || !combo.mod || combo.alt) return null;
+      for (const entry of SHORTCUT_TABLE) {
+        if (entry.code !== combo.code) continue;
+        if (Boolean(entry.shift) !== Boolean(combo.shift)) continue;
+        return entry;
+      }
+      return null;
+    }
+
+    /**
+     * Where the keyboard input is coming from, in the panel's terms.
+     *
+     * `region` drives the `scope` check; `textField`, `dialog`, `composing`,
+     * `outsideModal` and `repeat` are independent vetoes so each condition can
+     * be exercised on its own (MC/DC decision table in the unit tests).
+     */
+    function shortcutEnvironment(event, rootElement, options) {
+      const opts = options || {};
+      const target = event && event.target;
+      const element =
+        target && target.nodeType === 3 ? target.parentElement : target;
+      const withinRoot = Boolean(
+        rootElement &&
+        element &&
+        typeof rootElement.contains === "function" &&
+        rootElement.contains(element),
+      );
+      const active =
+        typeof document !== "undefined" ? document.activeElement : null;
+      const focusInsideRoot = Boolean(
+        rootElement &&
+        active &&
+        typeof rootElement.contains === "function" &&
+        rootElement.contains(active),
+      );
+      const editable = Boolean(
+        withinRoot &&
+        element &&
+        typeof element.closest === "function" &&
+        element.closest(
+          '[data-block-id][contenteditable="true"], [data-block-id][contenteditable=""]',
+        ),
+      );
+      const textField = Boolean(
+        withinRoot &&
+        element &&
+        typeof element.closest === "function" &&
+        element.closest("input, textarea, select"),
+      );
+      return {
+        region: editable
+          ? "editable"
+          : withinRoot || focusInsideRoot
+            ? "panel"
+            : "outside",
+        textField,
+        dialog: opts.dialog === true,
+        composing: eventIsComposing(event) || opts.composing === true,
+        repeat: Boolean(event && event.repeat),
+        outsideModal: opts.outsideModal === true,
+      };
+    }
+
+    /** True when a modal outside the panel owns focus (e.g. a DSH dialog). */
+    function modalOutsidePanel(rootElement) {
+      if (typeof document === "undefined" || !document.activeElement)
+        return false;
+      const active = document.activeElement;
+      if (!active || active === document.body) return false;
+      if (
+        rootElement &&
+        typeof rootElement.contains === "function" &&
+        rootElement.contains(active)
+      )
+        return false;
+      return Boolean(
+        typeof active.closest === "function" &&
+        active.closest(
+          '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+        ),
+      );
+    }
+
+    /**
+     * Decide whether one keyboard event is one of the panel's shortcuts.
+     * Returns the table entry or null; never touches the event.
+     */
+    function matchShortcut(event, environment) {
+      if (!event || !environment) return null;
+      if (environment.composing) return null;
+      if (environment.outsideModal) return null;
+      if (environment.dialog) return null;
+      if (environment.textField) return null;
+      if (environment.region === "outside") return null;
+      const entry = shortcutForCombo(shortcutCombo(event));
+      if (!entry) return null;
+      if (entry.scope === "editable" && environment.region !== "editable")
+        return null;
+      if (entry.repeat === false && environment.repeat) return null;
+      return entry;
+    }
+
+    /**
+     * Install the window **capture-phase** keydown listener that runs before
+     * DSH's own window-bubble shortcut dispatcher. Capture at `window` is the
+     * only DOM position that is guaranteed to see the event before a bubble
+     * listener on `window`, before React's root delegation, and before any
+     * default editing behaviour.
+     */
+    const shortcutRuntime = {
+      bindings: 0,
+      capture: 0,
+      events: 0,
+      matched: 0,
+      ignored: 0,
+      lastCommand: null,
+      serviceRegistered: 0,
+      serviceSkipped: [],
+      serviceError: null,
+      executed: 0,
+      lastExec: null,
+    };
+
+    function bindShortcutCapture(options) {
+      if (typeof window === "undefined" || !window.addEventListener)
+        return () => {};
+      const opts = options || {};
+      const onKeyDown = (event) => {
+        shortcutRuntime.events += 1;
+        let root = null;
+        try {
+          root = opts.getRoot ? opts.getRoot() : null;
+        } catch (_error) {
+          root = null;
+        }
+        let state = null;
+        try {
+          state = opts.getState ? opts.getState() : null;
+        } catch (_error) {
+          state = null;
+        }
+        const environment = shortcutEnvironment(event, root, {
+          dialog: Boolean(state && state.dialog),
+          composing: Boolean(state && state.composing),
+          outsideModal: modalOutsidePanel(root),
+        });
+        const entry = matchShortcut(event, environment);
+        if (!entry) {
+          shortcutRuntime.ignored += 1;
+          return;
+        }
+        // Consume before anything else runs: DSH's dispatcher checks
+        // `defaultPrevented`, and capture-phase stop prevents its bubble
+        // listener (and React's delegated one) from seeing the event again.
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function")
+          event.stopImmediatePropagation();
+        shortcutRuntime.matched += 1;
+        shortcutRuntime.lastCommand = entry.id;
+        try {
+          if (opts.onCommand) opts.onCommand(entry, event);
+        } catch (error) {
+          if (typeof console !== "undefined" && console.error)
+            console.error("Documents panel shortcut failed", error);
+        }
+      };
+      window.addEventListener("keydown", onKeyDown, true);
+      shortcutRuntime.capture += 1;
+      shortcutRuntime.bindings += 1;
+      return () => {
+        window.removeEventListener("keydown", onKeyDown, true);
+        shortcutRuntime.capture = Math.max(0, shortcutRuntime.capture - 1);
+        shortcutRuntime.bindings = Math.max(0, shortcutRuntime.bindings - 1);
+      };
+    }
+
+    /**
+     * Mirrors the binding facts into a read-only diagnostic for tests and the
+     * `data-dx-shortcuts` attribute visible to the live v2 probe.
+     */
+    function shortcutDiagnostics() {
+      return {
+        capturePhase: true,
+        bound: shortcutRuntime.bindings > 0,
+        bindings: shortcutRuntime.bindings,
+        windowCaptureListeners: shortcutRuntime.capture,
+        combos: SHORTCUT_TABLE.map((entry) => ({
+          id: entry.id,
+          combo: entry.label,
+          code: entry.code,
+          shift: Boolean(entry.shift),
+          scope: entry.scope,
+          repeat: entry.repeat,
+          action: entry.action,
+        })),
+        events: shortcutRuntime.events,
+        matched: shortcutRuntime.matched,
+        ignored: shortcutRuntime.ignored,
+        lastCommand: shortcutRuntime.lastCommand,
+        executed: shortcutRuntime.executed,
+        lastExec: shortcutRuntime.lastExec,
+        service: {
+          registered: shortcutRuntime.serviceRegistered,
+          skipped: shortcutRuntime.serviceSkipped.slice(),
+          error: shortcutRuntime.serviceError,
+        },
+      };
+    }
+
+    /**
+     * Second path: contribute the same commands to the DSH `shortcuts` service
+     * when the page has one. Every failure is contained: a missing, older or
+     * conflicting registry must never break the panel, and the capture
+     * listener keeps working regardless.
+     */
+    function registerShortcutCommands(options) {
+      const opts = options || {};
+      const service = opts.shortcuts;
+      const disposers = [];
+      if (!service || typeof service.register !== "function") {
+        return disposers;
+      }
+      const onCommand = (id) => {
+        if (typeof opts.onCommand === "function") opts.onCommand(id);
+      };
+      for (const entry of SHORTCUT_TABLE) {
+        const commandId = `${SHORTCUT_COMMAND_PREFIX}${entry.id}`;
+        try {
+          const defaults = shortcutCommandDefaults(entry, "primary");
+          if (typeof service.describeBinding === "function") {
+            const probe = service.describeBinding({
+              code: entry.code,
+              modifiers: entry.shift ? ["primary", "shift"] : ["primary"],
+            });
+            const conflicts = (probe && probe.conflicts) || [];
+            if (conflicts.length > 0) {
+              shortcutRuntime.serviceSkipped.push({
+                id: entry.id,
+                reason: "conflict",
+                conflicts: conflicts.slice(),
+              });
+              continue;
+            }
+            if (probe && probe.issue) {
+              shortcutRuntime.serviceSkipped.push({
+                id: entry.id,
+                reason: "binding-issue",
+                issue: String(probe.issue),
+              });
+              continue;
+            }
+          }
+          const dispose = service.register({
+            id: commandId,
+            label: () => entry.label,
+            aliases: [entry.label.toLowerCase()],
+            defaults,
+            // DSH models dialogs as modal owners (`modals`), not as a region.
+            // `dialog` is kept in `regions` for the requested contract and is
+            // inert: dispatch only compares page/editable/terminal.
+            regions: ["editable", "page", "dialog"],
+            modals: ["dx-dialog", "dialog", "other"],
+            resolve: () => ({
+              status: "handled",
+              run: () => {
+                onCommand(entry.id);
+              },
+            }),
+          });
+          if (typeof dispose === "function") disposers.push(dispose);
+          shortcutRuntime.serviceRegistered += 1;
+        } catch (error) {
+          shortcutRuntime.serviceError = String(
+            (error && error.message) || error,
+          );
+        }
+      }
+      return disposers;
+    }
 
     /**
      * The document types the Host can import through `POST /open`; the hidden
@@ -2034,6 +2555,321 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /* ------------------------------------------------- selection helpers */
+
+    /** Word boundary range around `offset`, for double-click selection. */
+    function wordRangeAt(text, offset) {
+      const value = typeof text === "string" ? text : "";
+      const total = value.length;
+      const target = clampOffset(offset, total);
+      const isWord = (character) =>
+        Boolean(character) && /[\p{L}\p{N}_'’-]/u.test(character);
+      if (!isWord(value[target]) && !isWord(value[target - 1]))
+        return { start: target, end: target };
+      let start = target;
+      let end = target;
+      while (start > 0 && isWord(value[start - 1])) start -= 1;
+      while (end < total && isWord(value[end])) end += 1;
+      // A caret just after the word (double-click at its right edge) still
+      // selects that word, which is the behaviour users expect.
+      if (start === end && target > 0 && isWord(value[target - 1])) {
+        let from = target;
+        let to = target;
+        while (from > 0 && isWord(value[from - 1])) from -= 1;
+        while (to < total && isWord(value[to])) to += 1;
+        return { start: from, end: to };
+      }
+      return { start, end };
+    }
+
+    /** Ordered paragraph ids with their text length, for caret arithmetic. */
+    function paragraphFlow(document) {
+      const { list } = collectBlocks(document || {});
+      const flow = [];
+      for (const entry of list) {
+        if (!entry.block || entry.block.type !== "paragraph") continue;
+        flow.push({
+          blockId: entry.block.id,
+          length: paragraphText(entry.block).length,
+        });
+      }
+      return flow;
+    }
+
+    function clampPointToFlow(flow, point) {
+      if (!point || flow.length === 0) return null;
+      let index = flow.findIndex((entry) => entry.blockId === point.blockId);
+      if (index < 0) index = 0;
+      return {
+        blockId: flow[index].blockId,
+        offset: clampOffset(point.offset || 0, flow[index].length),
+      };
+    }
+
+    /**
+     * One arrow-key step in the document's text flow. Left/Right cross
+     * paragraph boundaries (so Shift+Arrow extends across blocks); Up/Down keep
+     * the column offset and move one paragraph.
+     */
+    function moveSelectionFocus(document, point, key) {
+      const flow = paragraphFlow(document);
+      if (flow.length === 0) return null;
+      let index = flow.findIndex(
+        (entry) => entry.blockId === (point && point.blockId),
+      );
+      if (index < 0) index = 0;
+      let offset = clampOffset(
+        (point && point.offset) || 0,
+        flow[index].length,
+      );
+      if (key === "ArrowLeft") {
+        if (offset > 0) offset -= 1;
+        else if (index > 0) {
+          index -= 1;
+          offset = flow[index].length;
+        }
+      } else if (key === "ArrowRight") {
+        if (offset < flow[index].length) offset += 1;
+        else if (index < flow.length - 1) {
+          index += 1;
+          offset = 0;
+        }
+      } else if (key === "ArrowUp") {
+        index = Math.max(0, index - 1);
+        offset = clampOffset(offset, flow[index].length);
+      } else if (key === "ArrowDown") {
+        index = Math.min(flow.length - 1, index + 1);
+        offset = clampOffset(offset, flow[index].length);
+      } else if (key === "Home") {
+        offset = 0;
+      } else if (key === "End") {
+        offset = flow[index].length;
+      } else {
+        return clampPointToFlow(flow, point);
+      }
+      return { blockId: flow[index].blockId, offset };
+    }
+
+    /**
+     * New selection after Shift+Arrow/Home/End. `anchor` is the fixed end;
+     * without one the current start is used (Word/Chrome semantics).
+     */
+    function selectionForKeyboardExtension(document, selection, anchor, key) {
+      const order = selectionOrderOf(document);
+      const normalized = normalizeSelection(selection, order);
+      const startPoint = anchor || (normalized ? normalized.start : null);
+      if (!startPoint) return null;
+      const focus = normalized ? normalized.end : startPoint;
+      const nextFocus = moveSelectionFocus(document, focus, key);
+      if (!nextFocus) return null;
+      return normalizeSelection({ start: startPoint, end: nextFocus }, order);
+    }
+
+    /**
+     * The panel's public selection shape: `{ blocks, from, to }` plus the
+     * collapsed flag and the plain text the selection covers.
+     */
+    function selectionStateOf(document, selection) {
+      const order = selectionOrderOf(document || {});
+      const normalized = normalizeSelection(selection, order);
+      if (!normalized) return null;
+      const { list } = collectBlocks(document || {});
+      const startIndex = list.findIndex(
+        (entry) => entry.block && entry.block.id === normalized.start.blockId,
+      );
+      const endIndex = list.findIndex(
+        (entry) => entry.block && entry.block.id === normalized.end.blockId,
+      );
+      if (startIndex < 0 || endIndex < 0) return null;
+      const blocks = [];
+      for (
+        let index = Math.min(startIndex, endIndex);
+        index <= Math.max(startIndex, endIndex) && index < list.length;
+        index += 1
+      ) {
+        const entry = list[index];
+        if (entry.block && entry.block.type === "paragraph")
+          blocks.push(entry.block.id);
+      }
+      const from = {
+        blockId: normalized.start.blockId,
+        offset: normalized.start.offset || 0,
+      };
+      const to = {
+        blockId: normalized.end.blockId,
+        offset: normalized.end.offset || 0,
+      };
+      return {
+        collapsed: isCollapsed(normalized),
+        blocks,
+        from,
+        to,
+        text: selectionTextOf(document, normalized),
+      };
+    }
+
+    /** Plain text covered by an already-normalised selection, "\n" joined. */
+    function selectionTextOf(document, selection) {
+      const normalized = selection;
+      if (!normalized || isCollapsed(normalized)) return "";
+      const { list } = collectBlocks(document || {});
+      const startIndex = list.findIndex(
+        (entry) => entry.block && entry.block.id === normalized.start.blockId,
+      );
+      const endIndex = list.findIndex(
+        (entry) => entry.block && entry.block.id === normalized.end.blockId,
+      );
+      if (startIndex < 0 || endIndex < 0) return "";
+      const pieces = [];
+      for (
+        let index = startIndex;
+        index <= endIndex && index < list.length;
+        index += 1
+      ) {
+        const entry = list[index];
+        if (!entry.block || entry.block.type !== "paragraph") continue;
+        const text = paragraphText(entry.block);
+        const from =
+          index === startIndex
+            ? Math.min(normalized.start.offset, text.length)
+            : 0;
+        const to =
+          index === endIndex
+            ? Math.min(normalized.end.offset, text.length)
+            : text.length;
+        pieces.push(text.slice(Math.min(from, to), Math.max(from, to)));
+      }
+      return pieces.join("\n");
+    }
+
+    /* -------------------------------------------------- text flush plan */
+
+    /**
+     * Turn the pending per-block DOM text into the exact Host ops required to
+     * make the model match, and drop every no-op.
+     *
+     * This is the duplication guard: an entry whose text already equals the
+     * last text the Host confirmed produces no op at all, and each block
+     * produces at most one op per flush. `skipped` explains why an entry was
+     * not sent, which the tests assert on.
+     */
+    function planTextFlush(hostTexts, pendingEntries) {
+      const ops = [];
+      const skipped = [];
+      const entries =
+        pendingEntries instanceof Map
+          ? Array.from(pendingEntries.entries())
+          : Array.isArray(pendingEntries)
+            ? pendingEntries
+            : [];
+      // Last write wins per block: a second entry for the same paragraph is
+      // the same logical edit and must not become a second op.
+      const latest = new Map();
+      for (const pair of entries) {
+        if (Array.isArray(pair) && typeof pair[0] === "string")
+          latest.set(pair[0], pair[1]);
+      }
+      for (const [blockId, text] of latest) {
+        if (typeof blockId !== "string" || !blockId) continue;
+        if (typeof text !== "string") continue;
+        const hostText =
+          hostTexts instanceof Map
+            ? hostTexts.get(blockId)
+            : hostTexts && typeof hostTexts === "object"
+              ? hostTexts[blockId]
+              : undefined;
+        if (hostText === undefined) {
+          skipped.push({ blockId, reason: "unknown-block" });
+          continue;
+        }
+        if (hostText === text) {
+          skipped.push({ blockId, reason: "in-sync" });
+          continue;
+        }
+        const diff = diffTextRange(hostText, text);
+        if (!diff) {
+          skipped.push({ blockId, reason: "no-diff" });
+          continue;
+        }
+        ops.push({
+          blockId,
+          start: diff.start,
+          end: diff.end,
+          insert: diff.insert,
+          text,
+        });
+      }
+      return { ops, skipped };
+    }
+
+    /** Apply one planned op to a plain string (used by the differential tests). */
+    function applyTextDiff(text, start, end, insert) {
+      const value = typeof text === "string" ? text : "";
+      const from = clampOffset(start, value.length);
+      const to = Math.max(from, clampOffset(end, value.length));
+      return (
+        value.slice(0, from) +
+        (typeof insert === "string" ? insert : "") +
+        value.slice(to)
+      );
+    }
+
+    /** True when two selections address the same two points. */
+    function sameSelection(a, b) {
+      if (!a || !b || !a.start || !a.end || !b.start || !b.end) return false;
+      return (
+        a.start.blockId === b.start.blockId &&
+        (a.start.offset || 0) === (b.start.offset || 0) &&
+        a.end.blockId === b.end.blockId &&
+        (a.end.offset || 0) === (b.end.offset || 0)
+      );
+    }
+
+    /**
+     * Pointer-selection diagnostics. They make the drag/keyboard selection path
+     * observable from the harness (and from the live v2 probe) without exposing
+     * component internals: how many pointer events arrived, what point each one
+     * resolved to, and why a selection application was refused.
+     */
+    const selectionRuntime = {
+      pointerDown: 0,
+      pointerMove: 0,
+      applied: 0,
+      failed: 0,
+      lastDown: null,
+      lastMove: null,
+      lastPoint: null,
+      lastApply: null,
+      lastApplied: null,
+      lastUpdate: null,
+      patchCount: 0,
+      lastError: null,
+      lastKeyboard: null,
+    };
+
+    function selectionDiagnostics() {
+      return {
+        pointerDown: selectionRuntime.pointerDown,
+        pointerMove: selectionRuntime.pointerMove,
+        applied: selectionRuntime.applied,
+        failed: selectionRuntime.failed,
+        lastDown: selectionRuntime.lastDown,
+        lastMove: selectionRuntime.lastMove,
+        lastPoint: selectionRuntime.lastPoint,
+        lastApply: selectionRuntime.lastApply,
+        lastApplied: selectionRuntime.lastApplied,
+        lastUpdate: selectionRuntime.lastUpdate,
+        patchCount: selectionRuntime.patchCount,
+        lastError: selectionRuntime.lastError,
+        lastKeyboard: selectionRuntime.lastKeyboard,
+        structuralDepth: selectionRuntime.structuralDepth || 0,
+        structuralInputs: selectionRuntime.structuralInputs || 0,
+        deferredChars: selectionRuntime.deferredChars || 0,
+        lastPlacement: selectionRuntime.lastPlacement,
+        lastSplit: selectionRuntime.lastSplit,
+      };
+    }
+
     /* ------------------------------------------------------- Host client */
 
     /**
@@ -2757,6 +3593,8 @@ window.__ModuleLoader__.load({
         loading: false,
         error: null,
         notice: "",
+        noticeDismissible: false,
+        boldReserved: false,
         offline: false,
         dialog: null,
         selection: null,
@@ -2909,6 +3747,8 @@ window.__ModuleLoader__.load({
       state.saveState = opts.saveState || "saved";
       state.error = opts.error || null;
       state.notice = opts.notice || "";
+      state.noticeDismissible = opts.noticeDismissible === true;
+      state.boldReserved = opts.boldReserved === true;
       state.offline = opts.offline === true;
       state.dialog = opts.dialog || null;
       state.fallback = opts.fallback || null;
@@ -3112,6 +3952,11 @@ window.__ModuleLoader__.load({
         canPickDirectory: canPickDirectory(),
         dialog: state.dialog,
         selection: state.selection,
+        boldReserved: state.boldReserved === true,
+        shortcutOverrides:
+          state.boldReserved === true ? { bold: "Ctrl+Shift+B" } : {},
+        noticeDismissible: state.noticeDismissible === true,
+        surfaceEpoch: state.surfaceEpoch || 0,
         formatting,
         canUndo: state.canUndo,
         canRedo: state.canRedo,
@@ -3307,12 +4152,17 @@ window.__ModuleLoader__.load({
         selection.end ? selection.end.blockId : selection.start.blockId,
       );
       if (!startElement || !endElement) return false;
-      if (typeof startElement.focus === "function") {
-        try {
-          startElement.focus({ preventScroll: true });
-        } catch (_error) {
-          startElement.focus();
+      beginSelectionWrite();
+      try {
+        if (typeof startElement.focus === "function") {
+          try {
+            startElement.focus({ preventScroll: true });
+          } catch (_error) {
+            startElement.focus();
+          }
         }
+      } finally {
+        endSelectionWrite();
       }
       const ownerDocument = rootElement.ownerDocument;
       const range = ownerDocument.createRange();
@@ -3334,12 +4184,137 @@ window.__ModuleLoader__.load({
         ? ownerDocument.getSelection()
         : window.getSelection();
       if (!domSelection) return false;
-      domSelection.removeAllRanges();
-      domSelection.addRange(range);
+      beginSelectionWrite();
+      try {
+        domSelection.removeAllRanges();
+        domSelection.addRange(range);
+      } finally {
+        endSelectionWrite();
+      }
       return true;
     }
 
     /* ------------------------------------------------------- components */
+
+    /**
+     * Model point under a viewport coordinate.
+     *
+     * `caretRangeFromPoint` is Chromium's; the fallback walks every rendered
+     * block and maps the click to the nearest text position. Returning null
+     * means the pointer is not over the document at all.
+     */
+    function selectionPointAt(rootElement, clientX, clientY) {
+      if (
+        typeof document === "undefined" ||
+        !rootElement ||
+        typeof rootElement.querySelectorAll !== "function"
+      )
+        return null;
+      const candidates = Array.from(
+        rootElement.querySelectorAll("[data-block-id]"),
+      ).filter(
+        (element) =>
+          element.tagName !== "TABLE" &&
+          element.hasAttribute("contenteditable"),
+      );
+      if (candidates.length === 0) return null;
+      let blockElement = null;
+      if (typeof document.elementFromPoint === "function") {
+        const hit = document.elementFromPoint(clientX, clientY);
+        const closest =
+          hit && typeof hit.closest === "function"
+            ? hit.closest("[data-block-id]")
+            : null;
+        if (closest && rootElement.contains(closest)) blockElement = closest;
+      }
+      if (!blockElement) {
+        let best = null;
+        for (const candidate of candidates) {
+          const rect = candidate.getBoundingClientRect();
+          if (!rect.width && !rect.height) continue;
+          const vertical =
+            clientY < rect.top
+              ? rect.top - clientY
+              : clientY > rect.bottom
+                ? clientY - rect.bottom
+                : 0;
+          if (!best || vertical < best.distance)
+            best = { element: candidate, distance: vertical };
+        }
+        blockElement = best ? best.element : null;
+      }
+      if (!blockElement) return null;
+      const rect = blockElement.getBoundingClientRect();
+      const x = Math.min(Math.max(clientX, rect.left + 1), rect.right - 1);
+      const y = Math.min(Math.max(clientY, rect.top + 1), rect.bottom - 1);
+      let offset = 0;
+      if (typeof document.caretRangeFromPoint === "function") {
+        const range = document.caretRangeFromPoint(x, y);
+        if (range && blockElement.contains(range.startContainer))
+          offset = offsetInBlockElement(
+            blockElement,
+            range.startContainer,
+            range.startOffset,
+          );
+      } else if (typeof document.caretPositionFromPoint === "function") {
+        const caret = document.caretPositionFromPoint(x, y);
+        if (caret && blockElement.contains(caret.offsetNode))
+          offset = offsetInBlockElement(
+            blockElement,
+            caret.offsetNode,
+            caret.offset,
+          );
+      }
+      return {
+        blockId: blockElement.getAttribute("data-block-id") || "",
+        offset,
+      };
+    }
+
+    /** Build a DOM Range between two model points (either order). */
+    function domRangeForPoints(rootElement, fromPoint, toPoint) {
+      if (typeof document === "undefined" || !rootElement) return null;
+      const fromElement = findBlockElement(rootElement, fromPoint.blockId);
+      const toElement = findBlockElement(rootElement, toPoint.blockId);
+      if (!fromElement || !toElement) return null;
+      const start = textPointAtOffset(fromElement, fromPoint.offset || 0);
+      const end = textPointAtOffset(toElement, toPoint.offset || 0);
+      const range = rootElement.ownerDocument.createRange();
+      try {
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+      } catch (_error) {
+        return null;
+      }
+      return range;
+    }
+
+    /**
+     * Depth counter for programmatic selection writes. Focusing a paragraph
+     * fires a focus event, and the panel's focus handler reads the *old* DOM
+     * selection; without this guard that read overwrites the selection the
+     * caller is in the middle of writing (Ctrl+A appeared to do nothing).
+     */
+    let selectionWriteDepth = 0;
+
+    function beginSelectionWrite() {
+      selectionWriteDepth += 1;
+    }
+
+    function endSelectionWrite() {
+      selectionWriteDepth = Math.max(0, selectionWriteDepth - 1);
+    }
+
+    /** Replace the browser selection with a model range, without stealing scroll. */
+    function selectDomRange(rootElement, range) {
+      if (!range || typeof window === "undefined" || !window.getSelection)
+        return false;
+      const domSelection = window.getSelection();
+      if (!domSelection) return false;
+      domSelection.removeAllRanges();
+      domSelection.addRange(range);
+      return true;
+    }
 
     const PT_PER_PX = 96 / 72;
 
@@ -3393,7 +4368,8 @@ window.__ModuleLoader__.load({
       const custom =
         typeof item.title === "function" ? item.title(ctx) : item.title;
       const base = custom || label;
-      const shortcut = SHORTCUTS[item.run];
+      const overrides = (ctx && ctx.shortcutOverrides) || {};
+      const shortcut = overrides[item.run] || SHORTCUTS[item.run];
       if (shortcut && String(base).indexOf(shortcut) === -1)
         return `${base} (${shortcut})`;
       return base;
@@ -3733,8 +4709,8 @@ window.__ModuleLoader__.load({
               pressed: () => formatting.bold,
               editing: true,
               needs: "caret",
-              title:
-                "Bold (Ctrl+B): applies to the selection, or to the current paragraph when the caret is collapsed",
+              title: (toolCtx) =>
+                `Bold (${toolCtx.boldReserved ? "Ctrl+Shift+B" : "Ctrl+B"}): applies to the selection, or to the current paragraph when the caret is collapsed`,
             }),
             tool("italic", "italic", "Italic", {
               pressed: () => formatting.italic,
@@ -4216,7 +5192,7 @@ window.__ModuleLoader__.load({
     }
 
     function viewGroups(ctx) {
-      return [
+      const groups = [
         {
           id: "views",
           label: "Views",
@@ -4269,6 +5245,21 @@ window.__ModuleLoader__.load({
           ],
         },
       ];
+      if (ctx.boldReserved) {
+        groups.push({
+          id: "shortcuts",
+          label: "Keyboard",
+          items: [
+            {
+              kind: "readout",
+              id: "boldReservation",
+              text: () => BOLD_RESERVED_NOTE,
+              title: BOLD_RESERVED_NOTE,
+            },
+          ],
+        });
+      }
+      return groups;
     }
 
     function ribbonGroups(tab, ctx) {
@@ -5519,7 +6510,12 @@ window.__ModuleLoader__.load({
 
     function renderBlock(block, ctx) {
       if (!block) return null;
-      const key = block.id || ctx.key;
+      // Including the refetch epoch in the key remounts the paragraph after a
+      // reload. The DOM is edited directly by typing, while React's last
+      // committed text props still hold the pre-edit string; without the key
+      // change an undo to that same string is a no-op for React and the stale
+      // typed text stays on screen.
+      const key = block.id ? `${block.id}@${ctx.epoch || 0}` : ctx.key;
       if (block.type === "paragraph")
         return h(ParagraphView, { key, ctx, paragraph: block });
       if (block.type === "table")
@@ -5546,20 +6542,28 @@ window.__ModuleLoader__.load({
         sectionIndexByBlock,
       });
       const stackStyle = { "--dx-zoom": String(ctx.zoom || 1) };
+      const surfaceAttrs = {
+        className: ctx.showMarks ? "dx-editor dx-marks" : "dx-editor",
+        ref: api.surfaceRef,
+        role: "document",
+        "aria-label": "Document editing surface",
+        onInput: api.onInput,
+        onPaste: api.onPaste,
+        onBlur: api.onBlur,
+        onKeyUp: api.onSelectionChange,
+        onMouseUp: api.onSelectionChange,
+        onMouseDown: api.onSurfaceMouseDown,
+        onDoubleClick: api.onSurfaceDoubleClick,
+        onCopy: api.onSurfaceCopy,
+        onCut: api.onSurfaceCut,
+        onBeforeInput: api.onBeforeInput,
+        onCompositionStart: api.onCompositionStart,
+        onCompositionEnd: api.onCompositionEnd,
+        onFocus: api.onSelectionChange,
+      };
       return h(
         "div",
-        {
-          className: ctx.showMarks ? "dx-editor dx-marks" : "dx-editor",
-          ref: api.surfaceRef,
-          role: "document",
-          "aria-label": "Document editing surface",
-          onInput: api.onInput,
-          onPaste: api.onPaste,
-          onBlur: api.onBlur,
-          onKeyUp: api.onSelectionChange,
-          onMouseUp: api.onSelectionChange,
-          onFocus: api.onSelectionChange,
-        },
+        surfaceAttrs,
         ctx.showRuler
           ? h(Ruler, {
               section:
@@ -5634,6 +6638,7 @@ window.__ModuleLoader__.load({
     const MemoSurface = React.memo(EditorSurface, (previous, next) => {
       return (
         previous.ctx.document === next.ctx.document &&
+        previous.ctx.epoch === next.ctx.epoch &&
         previous.ctx.blockPages === next.ctx.blockPages &&
         previous.ctx.readOnly === next.ctx.readOnly &&
         previous.ctx.showMarks === next.ctx.showMarks &&
@@ -5849,6 +6854,10 @@ window.__ModuleLoader__.load({
             role: "dialog",
             "aria-modal": "true",
             "aria-label": props.title,
+            // DSH's shortcut dispatcher reads this when deciding which modal
+            // owns a key; it also lets the panel's own commands be allowed in
+            // this dialog through the `shortcuts` service.
+            "data-shortcut-modal": "dx-dialog",
             ref: nodeRef,
           },
           h("h3", null, props.title),
@@ -6734,6 +7743,7 @@ window.__ModuleLoader__.load({
         listLabels: ctx.listLabels,
         outline: ctx.outline,
         api,
+        epoch: ctx.surfaceEpoch || 0,
       };
       return h(
         "div",
@@ -6754,7 +7764,26 @@ window.__ModuleLoader__.load({
           : null,
         h(Ribbon, props),
         ctx.error ? h(ErrorBar, props) : null,
-        ctx.notice ? h("div", { className: "dx-notice" }, ctx.notice) : null,
+        ctx.notice
+          ? h(
+              "div",
+              { className: "dx-notice" },
+              ctx.notice,
+              ctx.noticeDismissible
+                ? h(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dx-notice-dismiss",
+                      "aria-label": "Dismiss notice",
+                      title: "Dismiss",
+                      onClick: () => api.onAction("dismissError"),
+                    },
+                    "×",
+                  )
+                : null,
+            )
+          : null,
         h(
           "div",
           { className: "dx-work" },
@@ -6796,6 +7825,13 @@ window.__ModuleLoader__.load({
         onSelectionChange: noop,
         onInput: noop,
         onPaste: noop,
+        onSurfaceMouseDown: noop,
+        onSurfaceDoubleClick: noop,
+        onSurfaceCopy: noop,
+        onSurfaceCut: noop,
+        onBeforeInput: noop,
+        onCompositionStart: noop,
+        onCompositionEnd: noop,
         onBlur: noop,
         onRootKeyDown: noop,
         onRibbonHeight: noop,
@@ -6824,11 +7860,33 @@ window.__ModuleLoader__.load({
       const hostTextRef = React.useRef(new Map());
       const flushTimerRef = React.useRef(null);
       const titleTimerRef = React.useRef(null);
-      const queueRef = React.useRef(Promise.resolve());
       const selectionRef = React.useRef(null);
       const caretRef = React.useRef(null);
       const dialogReturnFocusRef = React.useRef(null);
       const offlineRef = React.useRef(false);
+      // Pointer drag that started inside one paragraph and left it: a DOM
+      // Range can span two contenteditable islands, so the panel builds it.
+      const dragSelectRef = React.useRef(null);
+      // IME composition must not be diffed mid-flight: the browser owns the
+      // text until compositionend, otherwise the model and the composition
+      // buffer each apply the same characters.
+      const composingRef = React.useRef(false);
+      // One flush at a time; concurrent flushes used to interleave snapshots
+      // and re-send text that was already applied.
+      const flushPromiseRef = React.useRef(null);
+      // Fixed end of a Shift+Arrow selection.
+      const selectionAnchorRef = React.useRef(null);
+      // A programmatic caret/selection placement owns the selection until its
+      // DOM write lands; a keyup/mouseup in that window must not publish the
+      // previous (now stale) DOM selection.
+      const pendingPlacementRef = React.useRef(false);
+      const placementResolveRef = React.useRef(null);
+      const placementPromiseRef = React.useRef(null);
+      const placeCaretRef = React.useRef(null);
+      const placementSeqRef = React.useRef(0);
+      // Fallback path for the React handler and the capture listener.
+      const execShortcutRef = React.useRef(null);
+      const mountedRef = React.useRef(false);
 
       const patch = React.useCallback((next) => {
         setState((current) =>
@@ -6913,14 +7971,39 @@ window.__ModuleLoader__.load({
         [patch],
       );
 
-      const rebuildTextCache = React.useCallback((document) => {
-        pendingTextRef.current.clear();
+      /**
+       * Rebuild the "last text the Host confirmed" cache after a refetch.
+       *
+       * Typed-but-unflushed text is local state the Host has never seen, so a
+       * refetch must not silently drop it (loss) or let it replay on top of the
+       * server copy (duplication). Instead the pending text is re-applied to the
+       * fresh model — a no-op when the Host already has it — and stays in the
+       * pending map until one flush reconciles it against the new cache.
+       */
+      const rebuildTextCache = React.useCallback((document, options) => {
+        const keepPending = Boolean(options && options.keepPending);
+        if (!keepPending) pendingTextRef.current.clear();
         const cache = new Map();
-        for (const entry of collectBlocks(document).list) {
+        const { list, byId } = collectBlocks(document);
+        for (const entry of list) {
           if (entry.block && entry.block.type === "paragraph")
             cache.set(entry.block.id, paragraphText(entry.block));
         }
         hostTextRef.current = cache;
+        if (!keepPending) return;
+        for (const [blockId, text] of Array.from(pendingTextRef.current)) {
+          const entry = byId.get(blockId);
+          if (!entry || !entry.block || entry.block.type !== "paragraph") {
+            pendingTextRef.current.delete(blockId);
+            continue;
+          }
+          const serverText = paragraphText(entry.block);
+          if (serverText !== text) {
+            const diff = diffTextRange(serverText, text);
+            if (diff)
+              applyTextReplace(entry.block, diff.start, diff.end, diff.insert);
+          }
+        }
       }, []);
 
       const refreshList = React.useCallback(async () => {
@@ -6953,14 +8036,36 @@ window.__ModuleLoader__.load({
             const payload = await apiClient.bootstrap(documentId);
             const bootstrap = normalizeBootstrap(payload);
             bootstrap.documentId = documentId;
-            rebuildTextCache(bootstrap.document);
-            const selection = caret || bootstrap.selection;
-            caretRef.current = selection;
+            const reserved =
+              stateRef.current.boldReserved ||
+              detectBoldReservation(clientService("shortcuts"));
+            const showBoldNote = reserved && !boldReservedNoticeShown;
+            if (showBoldNote) boldReservedNoticeShown = true;
+            // Keep typed text that has not reached the Host yet: re-apply it to
+            // the fresh model and let the next flush send exactly the delta.
+            rebuildTextCache(bootstrap.document, { keepPending: true });
+            // `null` means "the caller places the caret itself" (split,
+            // paste, lists). Resurrecting the Host's stale selection here would
+            // run after that placement and pull the caret back into the old
+            // paragraph.
+            const explicit = caret !== undefined && caret !== null;
+            // `null` normally means "use the Host's selection" (initial load);
+            // structural callers pass skipPlacement because they place the
+            // caret themselves and must not have the stale one re-applied.
+            const skipPlacement = Boolean(
+              caret === null && options && options.skipPlacement,
+            );
+            const selection = explicit ? caret : bootstrap.selection;
+            caretRef.current = explicit
+              ? caret
+              : skipPlacement
+                ? null
+                : bootstrap.selection;
             offlineRef.current = false;
             patch((previous) => ({
               bootstrap,
               selectedId: documentId,
-              selection,
+              selection: explicit ? selection : previous.selection || selection,
               workspace: bootstrap.workspace || previous.workspace,
               documents: (previous.documents || []).map((item) =>
                 item.id === documentId
@@ -6973,6 +8078,18 @@ window.__ModuleLoader__.load({
               ),
               saveState: bootstrap.dirty ? "unsaved" : "saved",
               offline: false,
+              boldReserved: previous.boldReserved || reserved,
+              ...(showBoldNote
+                ? {
+                    notice: BOLD_RESERVED_NOTE,
+                    noticeDismissible: true,
+                  }
+                : {}),
+              // The surface is memoised on document identity; a refetch that
+              // returns structurally equal content still needs a render when
+              // the DOM was edited optimistically (undo/redo, refetch after a
+              // failed op). An explicit epoch makes that render unconditional.
+              surfaceEpoch: (previous.surfaceEpoch || 0) + 1,
             }));
             return bootstrap;
           } catch (cause) {
@@ -6983,50 +8100,209 @@ window.__ModuleLoader__.load({
         [patch, rebuildTextCache, reportError],
       );
 
+      /**
+       * Push typed text to the Host.
+       *
+       * Single-flight: concurrent callers share one promise, so two flushes can
+       * never interleave snapshots of `pendingTextRef` and both send the same
+       * characters. Each pass takes the current entries, removes exactly those
+       * (a keystroke arriving mid-flight stays queued), and sends at most one
+       * `replaceText` op per block — only when the text differs from what the
+       * Host last confirmed.
+       *
+       * A failed batch is not blindly retried: the Host may have applied it and
+       * lost only the response. The panel refetches the authoritative text,
+       * rebuilds the cache, and re-diffs the local text, so a retry sends
+       * nothing when the first attempt actually landed.
+       */
       const flushPending = React.useCallback(async () => {
         if (offlineRef.current) return;
         const current = stateRef.current;
         const bootstrap = current.bootstrap;
         if (!bootstrap) return;
-        const pending = pendingTextRef.current;
-        if (pending.size === 0) return;
-        const entries = Array.from(pending.entries());
-        pending.clear();
-        queueRef.current = queueRef.current
-          .then(async () => {
+        if (flushPromiseRef.current) return flushPromiseRef.current;
+        const documentId = bootstrap.documentId;
+        const run = (async () => {
+          let attempt = 0;
+          while (attempt < 3) {
+            const pending = pendingTextRef.current;
+            if (pending.size === 0) return;
+            const entries = Array.from(pending.entries());
             for (const [blockId, text] of entries) {
-              const hostText = hostTextRef.current.get(blockId);
-              if (hostText === undefined) {
-                hostTextRef.current.set(blockId, text);
-                continue;
+              if (pending.get(blockId) === text) pending.delete(blockId);
+            }
+            const plan = planTextFlush(hostTextRef.current, entries);
+            for (const item of plan.skipped) {
+              if (item.reason === "unknown-block")
+                pendingTextRef.current.delete(item.blockId);
+            }
+            if (plan.ops.length === 0) continue;
+            // Invariant: the DOM paragraph must still hold exactly the text the
+            // plan is about to send. If it does not (a keystroke landed while
+            // the model was being rebuilt), the plan is stale: keep the DOM
+            // text pending and re-read the Host document instead of posting a
+            // range against a document that moved.
+            let domMismatch = null;
+            const surface = surfaceRef.current;
+            for (const op of plan.ops) {
+              const element = surface
+                ? findBlockElement(surface, op.blockId)
+                : null;
+              const domText = element ? domTextOfBlock(element) : null;
+              if (domText !== null && domText !== op.text) {
+                domMismatch = { blockId: op.blockId, text: domText };
+                break;
               }
-              if (hostText === text) continue;
-              const diff = diffTextRange(hostText, text);
-              if (!diff) continue;
-              try {
-                const result = await apiClient.op(
-                  bootstrap.documentId,
-                  "replaceText",
-                  {
-                    range: {
-                      start: { blockId, offset: diff.start },
-                      end: { blockId, offset: diff.end },
-                    },
-                    text: diff.insert,
-                  },
-                );
-                hostTextRef.current.set(blockId, text);
-                applyEnvelope(result);
-              } catch (cause) {
+            }
+            if (domMismatch) {
+              for (const [blockId, text] of entries)
                 pendingTextRef.current.set(blockId, text);
-                reportError(cause);
+              pendingTextRef.current.set(domMismatch.blockId, domMismatch.text);
+              attempt += 1;
+              if (attempt > 2) return;
+              const reference = stateRef.current.bootstrap;
+              if (!reference) return;
+              try {
+                const payload = await apiClient.bootstrap(reference.documentId);
+                const next = normalizeBootstrap(payload);
+                next.documentId = reference.documentId;
+                rebuildTextCache(next.document, { keepPending: true });
+                patch((previous) => ({
+                  bootstrap: previous.bootstrap
+                    ? Object.assign({}, previous.bootstrap, {
+                        document: next.document,
+                        stats: next.stats,
+                        blockPages: next.blockPages,
+                        pageCount: next.pageCount,
+                        outline: next.outline,
+                        revision: next.revision,
+                      })
+                    : previous.bootstrap,
+                }));
+              } catch (_error) {
+                return;
+              }
+              continue;
+            }
+            const ops = plan.ops.map((op) => ({
+              op: "replaceText",
+              args: {
+                range: {
+                  start: { blockId: op.blockId, offset: op.start },
+                  end: { blockId: op.blockId, offset: op.end },
+                },
+                text: op.insert,
+              },
+            }));
+            try {
+              const result = await apiClient.ops(documentId, ops);
+              applyEnvelope(result);
+              for (const op of plan.ops)
+                hostTextRef.current.set(op.blockId, op.text);
+              attempt = 0;
+            } catch (cause) {
+              for (const op of plan.ops) {
+                if (!pendingTextRef.current.has(op.blockId))
+                  pendingTextRef.current.set(op.blockId, op.text);
+              }
+              reportError(cause);
+              attempt += 1;
+              // Re-read the authoritative text; keep pending so the next pass
+              // sends only what is still missing.
+              const reference = stateRef.current.bootstrap;
+              if (!reference) return;
+              try {
+                const payload = await apiClient.bootstrap(documentId);
+                const next = normalizeBootstrap(payload);
+                next.documentId = documentId;
+                rebuildTextCache(next.document, { keepPending: true });
+                patch((previous) => ({
+                  bootstrap: previous.bootstrap
+                    ? Object.assign({}, previous.bootstrap, {
+                        document: next.document,
+                        stats: next.stats,
+                        blockPages: next.blockPages,
+                        pageCount: next.pageCount,
+                        outline: next.outline,
+                        revision: next.revision,
+                      })
+                    : previous.bootstrap,
+                }));
+              } catch (_error) {
                 return;
               }
             }
-          })
-          .catch(() => undefined);
-        await queueRef.current;
-      }, [applyEnvelope, reportError]);
+          }
+        })();
+        flushPromiseRef.current = run
+          .catch(() => undefined)
+          .finally(() => {
+            flushPromiseRef.current = null;
+          });
+        return flushPromiseRef.current;
+      }, [applyEnvelope, patch, rebuildTextCache, reportError]);
+
+      /**
+       * Structural operations own the document until their refetch lands.
+       * Typing that arrives meanwhile is queued (printable keys) or reconciled
+       * from the DOM, never diffed against a pre-split snapshot.
+       */
+      const structuralPendingRef = React.useRef(0);
+      const deferredTextRef = React.useRef("");
+      const inputDuringStructuralRef = React.useRef(false);
+      const insertAtCaretRef = React.useRef(null);
+
+      const beginStructural = React.useCallback(() => {
+        structuralPendingRef.current += 1;
+        selectionRuntime.structuralDepth = structuralPendingRef.current;
+      }, []);
+
+      const endStructural = React.useCallback(async () => {
+        structuralPendingRef.current = Math.max(
+          0,
+          structuralPendingRef.current - 1,
+        );
+        if (structuralPendingRef.current > 0) return;
+        try {
+          if (inputDuringStructuralRef.current) {
+            inputDuringStructuralRef.current = false;
+            if (stateRef.current.bootstrap) {
+              const restore = selectionRef.current;
+              await reload(restore);
+              if (restore && placeCaretRef.current) {
+                placeCaretRef.current(restore);
+                if (placementPromiseRef.current) {
+                  await Promise.race([
+                    placementPromiseRef.current,
+                    new Promise((resolve) => setTimeout(resolve, 300)),
+                  ]);
+                  placementPromiseRef.current = null;
+                }
+              }
+              await flushPending();
+            }
+          }
+          const deferred = deferredTextRef.current;
+          deferredTextRef.current = "";
+          if (deferred) {
+            // The structural operation placed the caret from the fresh model;
+            // wait for that layout-effect placement before inserting.
+            if (placementPromiseRef.current) {
+              await Promise.race([
+                placementPromiseRef.current,
+                new Promise((resolve) => setTimeout(resolve, 300)),
+              ]);
+              placementPromiseRef.current = null;
+            }
+            await flushPending();
+            if (insertAtCaretRef.current)
+              await insertAtCaretRef.current(deferred);
+            else await flushPending();
+          }
+        } catch (_error) {
+          /* the operation that raised already reported */
+        }
+      }, [flushPending, reload]);
 
       const loadFallback = React.useCallback(
         async (documentId) => {
@@ -7062,6 +8338,12 @@ window.__ModuleLoader__.load({
           // Push local edits before leaving the current document so switching
           // or closing never silently drops typed text.
           await flushPending();
+          // A different document has different blocks: never carry pending
+          // text across, even when the flush above failed.
+          const previousId =
+            stateRef.current.bootstrap && stateRef.current.bootstrap.documentId;
+          if (previousId && previousId !== documentId)
+            pendingTextRef.current.clear();
           patch({
             selectedId: documentId,
             bootstrap: null,
@@ -7091,9 +8373,10 @@ window.__ModuleLoader__.load({
             reportError(HostError("OFFLINE", REASONS.offline));
             return null;
           }
-          await flushPending();
-          patch({ saving: true });
+          beginStructural();
           try {
+            await flushPending();
+            patch({ saving: true });
             const result = await apiClient.op(
               bootstrap.documentId,
               op,
@@ -7118,9 +8401,19 @@ window.__ModuleLoader__.load({
             return null;
           } finally {
             patch({ saving: false });
+            await endStructural();
           }
         },
-        [applyEnvelope, flushPending, isReadOnly, patch, reload, reportError],
+        [
+          applyEnvelope,
+          beginStructural,
+          endStructural,
+          flushPending,
+          isReadOnly,
+          patch,
+          reload,
+          reportError,
+        ],
       );
 
       const readSelection = React.useCallback(() => {
@@ -7136,17 +8429,29 @@ window.__ModuleLoader__.load({
       const placeCaret = React.useCallback(
         (selection) => {
           selectionRef.current = selection;
-          patch({ selection });
-          if (typeof setTimeout === "function")
-            setTimeout(() => {
-              if (surfaceRef.current)
-                placeSelection(surfaceRef.current, selection);
-            }, 0);
+          placementSeqRef.current += 1;
+          pendingPlacementRef.current = true;
+          placementPromiseRef.current = new Promise((resolve) => {
+            placementResolveRef.current = resolve;
+          });
+          // The caret is placed by a layout effect after the commit that renders
+          // the refetched paragraphs. A timer/rAF can run either side of that
+          // commit; a layout effect cannot, so typing that follows a structural
+          // operation always lands in the paragraph the model selected.
+          patch({
+            selection,
+            caretEpoch: (stateRef.current.caretEpoch || 0) + 1,
+          });
         },
         [patch],
       );
 
+      placeCaretRef.current = placeCaret;
+
       const updateSelection = React.useCallback(() => {
+        // A programmatic selection write owns the next read: the focus event it
+        // causes must not publish the previous caret.
+        if (selectionWriteDepth > 0 || pendingPlacementRef.current) return;
         const selection = readSelection();
         if (!selection) return;
         selectionRef.current = selection;
@@ -7162,6 +8467,7 @@ window.__ModuleLoader__.load({
           previous.end.offset === selection.end.offset
         )
           return;
+        selectionRuntime.lastUpdate = selection;
         patch({ selection });
       }, [patch, readSelection]);
 
@@ -7173,42 +8479,123 @@ window.__ModuleLoader__.load({
         }, 350);
       }, [flushPending]);
 
-      const handleInput = React.useCallback(
-        (event) => {
+      /**
+       * Reconcile one edited paragraph from the DOM into the model.
+       *
+       * The model is the only source the flush reads, and the flush diffs it
+       * against the text the Host confirmed, so applying the DOM text to the
+       * model must happen exactly once per input event. `force` lets
+       * compositionend read the final text when the browser commits without a
+       * trailing `input` event.
+       */
+      const syncBlockFromDom = React.useCallback(
+        (blockElement, options) => {
           const current = stateRef.current;
-          if (!current.bootstrap || isReadOnly(current)) return;
-          const target = event && event.target;
-          if (!target || typeof target.closest !== "function") return;
-          const blockElement = target.closest("[data-block-id]");
-          if (
-            !blockElement ||
-            !surfaceRef.current ||
-            !surfaceRef.current.contains(blockElement)
-          )
-            return;
-          if (blockElement.getAttribute("contenteditable") !== "true") return;
+          if (!current.bootstrap || isReadOnly(current)) return false;
+          if (!blockElement || !surfaceRef.current) return false;
+          if (!surfaceRef.current.contains(blockElement)) return false;
+          if (blockElement.getAttribute("contenteditable") !== "true")
+            return false;
           const blockId = blockElement.getAttribute("data-block-id");
           const { byId } = collectBlocks(current.bootstrap.document);
           const entry = byId.get(blockId);
           if (!entry || !entry.block || entry.block.type !== "paragraph")
-            return;
+            return false;
           const text = domTextOfBlock(blockElement);
           const previous = paragraphText(entry.block);
-          if (text === previous) return;
+          if (text === previous) return false;
           const diff = diffTextRange(previous, text);
-          if (!diff) return;
+          if (!diff) return false;
           applyTextReplace(entry.block, diff.start, diff.end, diff.insert);
-          pendingTextRef.current.set(blockId, text);
-          selectionRef.current =
-            domSelectionToModel(surfaceRef.current) || selectionRef.current;
+          const pending = pendingTextRef.current;
+          if (pending.get(blockId) !== text) pending.set(blockId, text);
+          const selection = domSelectionToModel(surfaceRef.current);
+          if (selection) selectionRef.current = selection;
+          if (options && options.schedule === false) return true;
           scheduleFlush();
           patch({
             saveState: "unsaved",
             selection: selectionRef.current,
             canUndo: true,
           });
+          return true;
         },
         [isReadOnly, patch, scheduleFlush],
+      );
+
+      const handleInput = React.useCallback(
+        (event) => {
+          const current = stateRef.current;
+          if (!current.bootstrap || isReadOnly(current)) return;
+          // The browser owns the text while the IME is composing. Diffing the
+          // intermediate buffer is what duplicated text: the model, the
+          // composition buffer and the final commit each added characters.
+          if (composingRef.current || eventIsComposing(event)) {
+            const selection = domSelectionToModel(surfaceRef.current);
+            if (selection) selectionRef.current = selection;
+            return;
+          }
+          const target = event && event.target;
+          if (!target || typeof target.closest !== "function") return;
+          const blockElement = target.closest("[data-block-id]");
+          if (!blockElement) return;
+          if (blockElement.getAttribute("contenteditable") !== "true") return;
+          if (structuralPendingRef.current > 0) {
+            // The document is mid-refetch: the DOM may be a remount with the
+            // caret at offset 0, so its text is not authoritative. Queue only
+            // the inserted characters; they are typed into the post-refetch
+            // caret when the structural operation finishes.
+            inputDuringStructuralRef.current = true;
+            selectionRuntime.structuralInputs =
+              (selectionRuntime.structuralInputs || 0) + 1;
+            const blockId = blockElement.getAttribute("data-block-id");
+            const { byId } = collectBlocks(current.bootstrap.document);
+            const entry = byId.get(blockId);
+            if (entry && entry.block && entry.block.type === "paragraph") {
+              const modelText = paragraphText(entry.block);
+              const dom = domTextOfBlock(blockElement);
+              if (dom !== modelText) {
+                const diff = diffTextRange(modelText, dom);
+                if (diff && diff.end === diff.start && diff.insert) {
+                  deferredTextRef.current += diff.insert;
+                  selectionRuntime.deferredChars =
+                    (selectionRuntime.deferredChars || 0) + diff.insert.length;
+                }
+              }
+            }
+            return;
+          }
+          syncBlockFromDom(blockElement);
+        },
+        [isReadOnly, syncBlockFromDom],
+      );
+
+      const handleBeforeInput = React.useCallback((event) => {
+        if (structuralPendingRef.current === 0) return;
+        const type = (event && event.inputType) || "";
+        if (type === "insertText" || type === "insertCompositionText") {
+          event.preventDefault();
+          deferredTextRef.current += (event && event.data) || "";
+          return;
+        }
+        if (type.startsWith("delete")) event.preventDefault();
+      }, []);
+
+      const handleCompositionStart = React.useCallback(() => {
+        composingRef.current = true;
+      }, []);
+
+      const handleCompositionEnd = React.useCallback(
+        (event) => {
+          composingRef.current = false;
+          const target = event && event.target;
+          const blockElement =
+            target && typeof target.closest === "function"
+              ? target.closest("[data-block-id]")
+              : null;
+          if (blockElement) syncBlockFromDom(blockElement);
+        },
+        [syncBlockFromDom],
       );
 
       const applyRunPropsToSelection = React.useCallback(
@@ -7406,13 +8793,337 @@ window.__ModuleLoader__.load({
         placeCaret(selection);
       }, [placeCaret]);
 
+      /**
+       * Publish a selection in the model *and* in the DOM.
+       *
+       * A DOM Range may span two paragraph contenteditables, which is exactly
+       * what makes a cross-paragraph selection visible and copyable; the model
+       * range is what every command reads. Writing both here keeps them in
+       * lockstep (the old code only wrote the DOM, so a drag that crossed a
+       * paragraph boundary produced a DOM selection the panel never learned).
+       */
+      const applyModelSelection = React.useCallback(
+        (startPoint, endPoint, options) => {
+          const current = stateRef.current;
+          const document = current.bootstrap
+            ? current.bootstrap.document
+            : null;
+          if (!document || !startPoint) {
+            selectionRuntime.failed += 1;
+            selectionRuntime.lastError = "apply:no-document";
+            return null;
+          }
+          const order = selectionOrderOf(document);
+          const normalized = normalizeSelection(
+            { start: startPoint, end: endPoint || startPoint },
+            order,
+          );
+          if (!normalized) {
+            selectionRuntime.failed += 1;
+            selectionRuntime.lastError = "apply:not-normalised";
+            return null;
+          }
+          selectionRuntime.applied += 1;
+          selectionRuntime.lastApplied = normalized;
+          selectionRuntime.patchCount += 1;
+          selectionRuntime.lastPoint = normalized.end;
+          selectionRef.current = normalized;
+          const root = surfaceRef.current;
+          const opts = options || {};
+          if (root && opts.dom !== false) {
+            const startElement = findBlockElement(
+              root,
+              normalized.start.blockId,
+            );
+            const range = domRangeForPoints(
+              root,
+              normalized.start,
+              normalized.end,
+            );
+            if (startElement && typeof startElement.focus === "function") {
+              beginSelectionWrite();
+              try {
+                startElement.focus({ preventScroll: true });
+              } catch (_error) {
+                /* focus is best-effort; the range still applies */
+              } finally {
+                endSelectionWrite();
+              }
+            }
+            const selected = range ? selectDomRange(root, range) : false;
+            selectionRuntime.lastApply = {
+              start: normalized.start,
+              end: normalized.end,
+              hasRange: Boolean(range),
+              selected,
+              domText: (() => {
+                if (typeof window === "undefined" || !window.getSelection)
+                  return "";
+                const domSelection = window.getSelection();
+                return domSelection ? String(domSelection) : "";
+              })(),
+            };
+          }
+          patch({ selection: normalized });
+          return normalized;
+        },
+        [patch],
+      );
+
+      /** Select the whole paragraph under a pointer point (triple click). */
+      const selectBlockAtPoint = React.useCallback(
+        (point) => {
+          const current = stateRef.current;
+          const document = current.bootstrap
+            ? current.bootstrap.document
+            : null;
+          if (!document || !point) return;
+          const entry = collectBlocks(document).byId.get(point.blockId);
+          if (!entry || !entry.block) return;
+          const end = paragraphText(entry.block).length;
+          selectionAnchorRef.current = {
+            anchor: { blockId: point.blockId, offset: 0 },
+            focus: { blockId: point.blockId, offset: end },
+          };
+          applyModelSelection(
+            { blockId: point.blockId, offset: 0 },
+            { blockId: point.blockId, offset: end },
+            { dom: true },
+          );
+        },
+        [applyModelSelection],
+      );
+
+      /** Select the word under a pointer point (double click). */
+      const selectWordAtPoint = React.useCallback(
+        (point) => {
+          const current = stateRef.current;
+          const document = current.bootstrap
+            ? current.bootstrap.document
+            : null;
+          if (!document || !point) return;
+          const entry = collectBlocks(document).byId.get(point.blockId);
+          if (!entry || !entry.block) return;
+          const range = wordRangeAt(paragraphText(entry.block), point.offset);
+          selectionAnchorRef.current = {
+            anchor: { blockId: point.blockId, offset: range.start },
+            focus: { blockId: point.blockId, offset: range.end },
+          };
+          applyModelSelection(
+            { blockId: point.blockId, offset: range.start },
+            { blockId: point.blockId, offset: range.end },
+            { dom: true },
+          );
+        },
+        [applyModelSelection],
+      );
+
+      const handleSurfaceMouseDown = React.useCallback(
+        (event) => {
+          if (!event || event.button !== 0) return;
+          const current = stateRef.current;
+          if (!current.bootstrap || isReadOnly(current)) return;
+          const root = surfaceRef.current;
+          if (!root) return;
+          const target = event.target;
+          if (
+            target &&
+            typeof target.closest === "function" &&
+            target.closest("input, textarea, select")
+          )
+            return;
+          selectionRuntime.pointerDown += 1;
+          const point = selectionPointAt(root, event.clientX, event.clientY);
+          selectionRuntime.lastDown = {
+            x: event.clientX,
+            y: event.clientY,
+            detail: event.detail,
+            point,
+          };
+          if (!point || !point.blockId) {
+            selectionRuntime.failed += 1;
+            selectionRuntime.lastError = "down:no-point";
+            return;
+          }
+          // The panel owns the mouse selection. Each paragraph is its own
+          // contenteditable, so Chrome's native drag clamps at that boundary and
+          // overrides a programmatic cross-block Range with its own anchor.
+          // Cancelling the default action removes that competing selection; the
+          // caret/range is then placed from the model, which is also what makes
+          // a drag into the next paragraph a real multi-block selection.
+          event.preventDefault();
+          if (event.detail >= 3) {
+            selectBlockAtPoint(point);
+            return;
+          }
+          if (event.detail === 2) {
+            selectWordAtPoint(point);
+            return;
+          }
+          if (event.shiftKey && selectionRef.current) {
+            const document = current.bootstrap.document;
+            const normalized = normalizeSelection(
+              selectionRef.current,
+              selectionOrderOf(document),
+            );
+            const anchor = normalized ? normalized.start : point;
+            selectionAnchorRef.current = { anchor, focus: point };
+            applyModelSelection(anchor, point, { dom: true });
+            return;
+          }
+          selectionAnchorRef.current = null;
+          dragSelectRef.current = { anchor: point, active: true };
+          applyModelSelection(point, point, { dom: true });
+        },
+        [
+          applyModelSelection,
+          isReadOnly,
+          selectBlockAtPoint,
+          selectWordAtPoint,
+        ],
+      );
+
+      const handleSurfaceDoubleClick = React.useCallback(
+        (event) => {
+          if (!event || isReadOnly(stateRef.current)) return;
+          const root = surfaceRef.current;
+          if (!root) return;
+          const point = selectionPointAt(root, event.clientX, event.clientY);
+          if (!point || !point.blockId) return;
+          event.preventDefault();
+          selectWordAtPoint(point);
+        },
+        [isReadOnly, selectWordAtPoint],
+      );
+
+      /** Continue a drag: every move writes the model range and the DOM range. */
+      const extendDragSelection = React.useCallback(
+        (event) => {
+          const drag = dragSelectRef.current;
+          selectionRuntime.pointerMove += 1;
+          selectionRuntime.lastMove = {
+            x: event.clientX,
+            y: event.clientY,
+            buttons: event.buttons,
+            drag: Boolean(drag),
+          };
+          if (!drag) return;
+          if (!(event.buttons & 1)) return;
+          const root = surfaceRef.current;
+          if (!root) return;
+          const point = selectionPointAt(root, event.clientX, event.clientY);
+          if (!point || !point.blockId) return;
+          if (composingRef.current) return;
+          event.preventDefault();
+          selectionAnchorRef.current = { anchor: drag.anchor, focus: point };
+          applyModelSelection(drag.anchor, point, { dom: true });
+        },
+        [applyModelSelection],
+      );
+
+      const finishDragSelection = React.useCallback(() => {
+        const drag = dragSelectRef.current;
+        if (!drag) return;
+        dragSelectRef.current = null;
+        if (!drag.active) return;
+        updateSelection();
+      }, [updateSelection]);
+
+      const extendSelectionByKey = React.useCallback(
+        (key) => {
+          const current = stateRef.current;
+          const document = current.bootstrap
+            ? current.bootstrap.document
+            : null;
+          if (!document) return;
+          const normalized = normalizeSelection(
+            selectionRef.current,
+            selectionOrderOf(document),
+          );
+          const previous = selectionAnchorRef.current;
+          const anchor = previous
+            ? previous.anchor
+            : normalized
+              ? normalized.start
+              : null;
+          const focusStart = previous
+            ? previous.focus
+            : normalized
+              ? normalized.end
+              : null;
+          if (!anchor || !focusStart) return;
+          const focus = moveSelectionFocus(document, focusStart, key);
+          if (!focus) return;
+          selectionAnchorRef.current = { anchor, focus };
+          applyModelSelection(anchor, focus, { dom: true });
+        },
+        [applyModelSelection],
+      );
+
+      // A native beforeinput listener is required: React's synthetic
+      // onBeforeInput is not dispatched for CDP/IME text insertion, and a text
+      // insertion that lands before the post-refetch caret is placed rewrites
+      // the wrong paragraph.
+      React.useEffect(() => {
+        const surface = surfaceRef.current;
+        if (!surface || typeof surface.addEventListener !== "function")
+          return undefined;
+        const onBefore = (event) => {
+          if (structuralPendingRef.current === 0) return;
+          const type = event.inputType || "";
+          if (type === "insertText" || type === "insertCompositionText") {
+            event.preventDefault();
+            deferredTextRef.current += event.data || "";
+            return;
+          }
+          if (type.startsWith("delete")) event.preventDefault();
+        };
+        surface.addEventListener("beforeinput", onBefore, true);
+        return () => surface.removeEventListener("beforeinput", onBefore, true);
+      }, []);
+
+      React.useLayoutEffect(() => {
+        if (!state.caretEpoch) return;
+        try {
+          const ok = Boolean(
+            surfaceRef.current &&
+            selectionRef.current &&
+            placeSelection(surfaceRef.current, selectionRef.current),
+          );
+          selectionRuntime.lastPlacement = {
+            selection: selectionRef.current,
+            ok,
+          };
+        } finally {
+          pendingPlacementRef.current = false;
+          if (placementResolveRef.current) {
+            placementResolveRef.current();
+            placementResolveRef.current = null;
+          }
+        }
+      }, [state.caretEpoch]);
+
+      React.useEffect(() => {
+        if (typeof window === "undefined" || !window.addEventListener)
+          return undefined;
+        const onMove = (event) => extendDragSelection(event);
+        const onUp = () => finishDragSelection();
+        window.addEventListener("mousemove", onMove, true);
+        window.addEventListener("mouseup", onUp, true);
+        return () => {
+          window.removeEventListener("mousemove", onMove, true);
+          window.removeEventListener("mouseup", onUp, true);
+        };
+      }, [extendDragSelection, finishDragSelection]);
+
       const deleteSelectedRange = React.useCallback(
         async (selection) => {
           const current = stateRef.current;
           if (!current.bootstrap) return;
-          await flushPending();
-          patch({ saving: true });
+          beginStructural();
           try {
+            await flushPending();
+            patch({ saving: true });
             const result = await apiClient.op(
               current.bootstrap.documentId,
               "deleteRange",
@@ -7427,9 +9138,18 @@ window.__ModuleLoader__.load({
             reportError(cause);
           } finally {
             patch({ saving: false });
+            await endStructural();
           }
         },
-        [applyEnvelope, flushPending, patch, reload, reportError],
+        [
+          applyEnvelope,
+          beginStructural,
+          endStructural,
+          flushPending,
+          patch,
+          reload,
+          reportError,
+        ],
       );
 
       const splitParagraph = React.useCallback(async () => {
@@ -7442,9 +9162,10 @@ window.__ModuleLoader__.load({
         if (!selection) return;
         const blockId = selection.start.blockId;
         const offset = selection.start.offset;
-        await flushPending();
-        patch({ saving: true });
+        beginStructural();
         try {
+          await flushPending();
+          patch({ saving: true });
           const result = await apiClient.op(
             current.bootstrap.documentId,
             "insertText",
@@ -7452,7 +9173,8 @@ window.__ModuleLoader__.load({
           );
           applyEnvelope(result);
           const created = newBlockIdFromOpResult(result, blockId);
-          const bootstrap = await reload(null);
+          selectionRuntime.lastSplit = { blockId, created };
+          const bootstrap = await reload(null, { skipPlacement: true });
           let targetId = created;
           if (!targetId && bootstrap) {
             const list = collectBlocks(bootstrap.document).list;
@@ -7473,8 +9195,18 @@ window.__ModuleLoader__.load({
           reportError(cause);
         } finally {
           patch({ saving: false });
+          await endStructural();
         }
-      }, [applyEnvelope, flushPending, patch, placeCaret, reload, reportError]);
+      }, [
+        applyEnvelope,
+        beginStructural,
+        endStructural,
+        flushPending,
+        patch,
+        placeCaret,
+        reload,
+        reportError,
+      ]);
 
       /**
        * Word's Shift+Enter: a line break inside the current paragraph. The Host
@@ -7588,9 +9320,10 @@ window.__ModuleLoader__.load({
             selectionOrderOf(current.bootstrap.document),
           );
           if (!selection) return;
-          await flushPending();
-          patch({ saving: true });
+          beginStructural();
           try {
+            await flushPending();
+            patch({ saving: true });
             const result = isCollapsed(selection)
               ? await apiClient.op(current.bootstrap.documentId, "insertText", {
                   position: selection.start,
@@ -7606,7 +9339,7 @@ window.__ModuleLoader__.load({
                   },
                 );
             applyEnvelope(result);
-            const bootstrap = await reload(null);
+            const bootstrap = await reload(null, { skipPlacement: true });
             if (bootstrap) {
               const entry = collectBlocks(bootstrap.document).byId.get(
                 selection.start.blockId,
@@ -7625,10 +9358,21 @@ window.__ModuleLoader__.load({
             reportError(cause);
           } finally {
             patch({ saving: false });
+            await endStructural();
           }
         },
-        [applyEnvelope, flushPending, patch, placeCaret, reload, reportError],
+        [
+          applyEnvelope,
+          beginStructural,
+          endStructural,
+          flushPending,
+          patch,
+          placeCaret,
+          reload,
+          reportError,
+        ],
       );
+      insertAtCaretRef.current = insertAtCaret;
 
       const handlePaste = React.useCallback(
         async (event) => {
@@ -7679,9 +9423,55 @@ window.__ModuleLoader__.load({
         await mergeForward();
       }, [deleteSelectedRange, isReadOnly, mergeForward]);
 
+      const handleSurfaceCopy = React.useCallback(
+        (event) => {
+          const text = selectionText();
+          if (!text) return;
+          if (
+            event &&
+            event.clipboardData &&
+            typeof event.clipboardData.setData === "function"
+          ) {
+            // Plain text only: pasted HTML must never enter the model, and a
+            // multi-block selection joins paragraphs with "\n".
+            event.clipboardData.setData("text/plain", text);
+            event.preventDefault();
+          }
+        },
+        [selectionText],
+      );
+
+      const handleSurfaceCut = React.useCallback(
+        (event) => {
+          if (isReadOnly(stateRef.current)) return;
+          const text = selectionText();
+          if (!text) return;
+          if (
+            event &&
+            event.clipboardData &&
+            typeof event.clipboardData.setData === "function"
+          ) {
+            event.clipboardData.setData("text/plain", text);
+            event.preventDefault();
+          }
+          void handleBackspace();
+        },
+        [handleBackspace, isReadOnly, selectionText],
+      );
+
       const handleKeyDown = React.useCallback(
         (event) => {
+          // The same vetoes the capture listener applies: a composition or a
+          // modal outside the panel owns the keystroke, and the React fallback
+          // must not apply it a second time (or at all).
+          if (eventIsComposing(event) || composingRef.current) return;
+          if (modalOutsidePanel(rootRef.current)) return;
           const current = stateRef.current;
+          // The capture listener intentionally lets a "must not repeat" command
+          // through on auto-repeat; the fallback must not apply it a second time.
+          const repeatEntry = shortcutForCombo(shortcutCombo(event));
+          if (repeatEntry && repeatEntry.repeat === false && event.repeat)
+            return;
           const target = event.target;
           const inDialog = Boolean(current.dialog);
           const inEditable =
@@ -7689,6 +9479,31 @@ window.__ModuleLoader__.load({
             typeof target.closest === "function" &&
             Boolean(target.closest("[data-block-id]"));
           const mod = event.ctrlKey || event.metaKey;
+          if (structuralPendingRef.current > 0 && event.key !== "Escape") {
+            const printable =
+              !mod &&
+              !event.altKey &&
+              typeof event.key === "string" &&
+              event.key.length === 1;
+            if (event.key === "Enter") {
+              event.preventDefault();
+              deferredTextRef.current += "\n";
+              return;
+            }
+            if (printable) {
+              event.preventDefault();
+              deferredTextRef.current += event.key;
+              return;
+            }
+            if (
+              event.key === "Backspace" ||
+              event.key === "Delete" ||
+              event.key === "Tab"
+            ) {
+              event.preventDefault();
+              return;
+            }
+          }
           // Ctrl+O / Cmd+O opens the in-panel chooser (the panel's own "Open
           // file…"), never the OS dialog. A text field or the contenteditable
           // document owns the keystroke, and an open dialog owns everything.
@@ -7760,14 +9575,80 @@ window.__ModuleLoader__.load({
                 });
               return;
             }
+            if (key === "z" && event.shiftKey) {
+              event.preventDefault();
+              void runAction("redo");
+              return;
+            }
             if (key === "z") {
               event.preventDefault();
               void runAction("undo");
               return;
             }
-            if (key === "y" || (key === "z" && event.shiftKey)) {
+            if (key === "y") {
               event.preventDefault();
               void runAction("redo");
+              return;
+            }
+            if (key === "k") {
+              event.preventDefault();
+              void runAction("hyperlink");
+              return;
+            }
+            // Shift changes the reported `key` on most layouts (Shift+7 is "&"
+            // on a US keyboard), so the list commands match the physical code.
+            if (event.shiftKey && event.code === "Digit7") {
+              event.preventDefault();
+              void runAction("numbering");
+              return;
+            }
+            if (event.shiftKey && event.code === "Digit8") {
+              event.preventDefault();
+              void runAction("bullets");
+              return;
+            }
+          }
+          if (
+            inEditable &&
+            !event.altKey &&
+            (event.key === "ArrowLeft" ||
+              event.key === "ArrowRight" ||
+              event.key === "ArrowUp" ||
+              event.key === "ArrowDown" ||
+              event.key === "Home" ||
+              event.key === "End")
+          ) {
+            if (!event.shiftKey) {
+              selectionAnchorRef.current = null;
+              return;
+            }
+            // Shift+Arrow extends the model selection, which is the only way to
+            // select *across* paragraphs: each paragraph is its own
+            // contenteditable, so the browser would clamp at its boundary.
+            event.preventDefault();
+            extendSelectionByKey(event.key);
+            return;
+          }
+          // A non-collapsed selection may span paragraphs; the browser would
+          // only replace the part inside the focused contenteditable. Route the
+          // first printable character through the model so the whole range is
+          // replaced in one op.
+          if (
+            inEditable &&
+            !mod &&
+            !event.altKey &&
+            typeof event.key === "string" &&
+            event.key.length === 1
+          ) {
+            const selection = normalizeSelection(
+              selectionRef.current,
+              selectionOrderOf(
+                current.bootstrap ? current.bootstrap.document : {},
+              ),
+            );
+            if (selection && !isCollapsed(selection)) {
+              event.preventDefault();
+              void insertAtCaret(event.key);
               return;
             }
           }
@@ -7835,6 +9716,7 @@ window.__ModuleLoader__.load({
         [
           applyRunPropsToSelection,
           deleteSelectedRange,
+          extendSelectionByKey,
           handleBackspace,
           handleDelete,
           insertAtCaret,
@@ -8120,7 +10002,7 @@ window.__ModuleLoader__.load({
             },
           );
           applyEnvelope(result);
-          await reload(null);
+          await reload(null, { skipPlacement: true });
           await runSearch();
         } catch (cause) {
           reportError(cause);
@@ -8688,8 +10570,9 @@ window.__ModuleLoader__.load({
         async (op) => {
           const current = stateRef.current;
           if (!current.bootstrap) return;
-          await flushPending();
+          beginStructural();
           try {
+            await flushPending();
             const result = await apiClient.op(
               current.bootstrap.documentId,
               op,
@@ -8725,7 +10608,11 @@ window.__ModuleLoader__.load({
                 canRedo: op === "redo" ? true : previous.canRedo,
                 saveState: "unsaved",
               }));
-              if (!result.blockPages) await reload(selectionRef.current);
+              // The undo/redo document is authoritative: any local text still
+              // pending would replay the very edit the history just reverted,
+              // so it is dropped before the refetch.
+              pendingTextRef.current.clear();
+              await reload(selectionRef.current);
             } else {
               await reload(selectionRef.current);
             }
@@ -8734,10 +10621,14 @@ window.__ModuleLoader__.load({
             if (op === "undo") patch({ canUndo: false });
             else patch({ canRedo: false });
             reportError(cause);
+          } finally {
+            await endStructural();
           }
         },
         [
           applyEnvelope,
+          beginStructural,
+          endStructural,
           flushPending,
           patch,
           rebuildTextCache,
@@ -8880,7 +10771,7 @@ window.__ModuleLoader__.load({
           };
           switch (name) {
             case "dismissError":
-              patch({ error: null, notice: "" });
+              patch({ error: null, notice: "", noticeDismissible: false });
               return;
             case "undo":
               await runHistory("undo");
@@ -9700,6 +11591,185 @@ window.__ModuleLoader__.load({
 
       const onRootKeyDown = handleKeyDown;
 
+      /**
+       * Execute one table command. The capture listener, the `shortcuts`
+       * service contribution and the React fallback all route through here, so
+       * there is exactly one implementation per command.
+       */
+      const execShortcut = React.useCallback(
+        async (id) => {
+          // Table command ids are user-facing ("redoShift"); runAction names the
+          // operation ("redo").
+          const command =
+            id === "redoShift" ? "redo" : id === "boldShift" ? "bold" : id;
+          // A structural operation owns input order; do not run a formatting
+          // command against a document that is about to be replaced.
+          if (structuralPendingRef.current > 0) return;
+          shortcutRuntime.executed = (shortcutRuntime.executed || 0) + 1;
+          shortcutRuntime.lastExec = command;
+          switch (command) {
+            case "undo":
+            case "redo":
+            case "bold":
+            case "italic":
+            case "underline":
+              await runAction(command);
+              return;
+            case "selectAll":
+              selectAllDocument();
+              return;
+            case "save":
+              await saveDocumentRef.current();
+              return;
+            case "find":
+              openDialogRef.current("find", {
+                query: "",
+                replacement: "",
+                matches: [],
+                searched: false,
+                activeMatch: null,
+              });
+              return;
+            case "open":
+              if (typeof openFileChooserRef.current === "function")
+                await openFileChooserRef.current();
+              return;
+            case "link":
+              await runAction("hyperlink");
+              return;
+            case "numberedList":
+              await runAction("numbering");
+              return;
+            case "bulletList":
+              await runAction("bullets");
+              return;
+            default:
+              return;
+          }
+        },
+        [runAction, selectAllDocument],
+      );
+      execShortcutRef.current = execShortcut;
+
+      // The capture-phase shortcut listener is marked on the root by its
+      // effect. The live selection diagnostic is written imperatively: the
+      // editing surface is memoised, so a render-time attribute would only
+      // update when the document changed, not when the selection did.
+      React.useEffect(() => {
+        const surface = surfaceRef.current;
+        if (!surface) return;
+        const state = selectionStateOf(
+          stateRef.current.bootstrap ? stateRef.current.bootstrap.document : {},
+          stateRef.current.selection,
+        );
+        if (state) {
+          surface.setAttribute(
+            "data-dx-selection",
+            `${state.from.blockId}:${state.from.offset}>` +
+              `${state.to.blockId}:${state.to.offset}`,
+          );
+          surface.setAttribute(
+            "data-dx-selection-blocks",
+            state.blocks.join(","),
+          );
+        } else {
+          surface.removeAttribute("data-dx-selection");
+          surface.removeAttribute("data-dx-selection-blocks");
+        }
+      }, [state.selection, state.bootstrap]);
+
+      // Path 1: window capture listener. This is the only position that runs
+      // before DSH's window-bubble dispatcher and before React's delegation.
+      React.useEffect(() => {
+        mountedRef.current = true;
+        const unbind = bindShortcutCapture({
+          getRoot: () => rootRef.current,
+          getState: () => ({
+            dialog: stateRef.current.dialog,
+            composing: composingRef.current,
+          }),
+          onCommand: (entry) => {
+            if (execShortcutRef.current) void execShortcutRef.current(entry.id);
+          },
+        });
+        const root = rootRef.current;
+        if (root) root.setAttribute("data-dx-shortcuts", "window-capture");
+        return () => {
+          mountedRef.current = false;
+          unbind();
+          if (root) root.removeAttribute("data-dx-shortcuts");
+        };
+      }, []);
+
+      // The host may already own Ctrl+B. Detect it once at mount so the ribbon,
+      // tooltip and note tell the truth before the user tries the chord.
+      React.useEffect(() => {
+        if (detectBoldReservation(clientService("shortcuts")))
+          patch({ boldReserved: true });
+      }, [patch]);
+
+      // Path 2: the DSH `shortcuts` client service, when the page has one. On
+      // Desktop Windows/macOS that service wins at the native `before-input-event`
+      // layer, so it is the only route for a key the app has reserved. A
+      // missing/older/conflicting registry must never break the panel.
+      React.useEffect(() => {
+        const disposers = registerShortcutCommands({
+          shortcuts: clientService("shortcuts"),
+          onCommand: (id) => {
+            if (execShortcutRef.current) void execShortcutRef.current(id);
+          },
+        });
+        return () => {
+          for (const dispose of disposers) {
+            try {
+              dispose();
+            } catch (_error) {
+              /* a disposed or replaced registry must not break unmount */
+            }
+          }
+        };
+      }, []);
+
+      // Selection survives a structural refetch: the model range is restored in
+      // the DOM by block id + offset, not by node identity. A DOM selection that
+      // already matches the model is left alone (no focus stealing, no IME
+      // interruptions).
+      React.useEffect(() => {
+        const surface = surfaceRef.current;
+        if (!surface || !selectionRef.current) return undefined;
+        if (
+          typeof document !== "undefined" &&
+          document.activeElement &&
+          !surface.contains(document.activeElement)
+        )
+          return undefined;
+        const seq = placementSeqRef.current;
+        const timer = setTimeout(() => {
+          if (
+            !surfaceRef.current ||
+            dragSelectRef.current ||
+            composingRef.current
+          )
+            return;
+          const model = selectionRef.current;
+          if (!model) return;
+          const expected = normalizeSelection(
+            model,
+            selectionOrderOf(
+              stateRef.current.bootstrap
+                ? stateRef.current.bootstrap.document
+                : {},
+            ),
+          );
+          if (!expected) return;
+          const dom = domSelectionToModel(surfaceRef.current);
+          if (dom && sameSelection(dom, expected)) return;
+          if (seq !== placementSeqRef.current) return;
+          placeSelection(surfaceRef.current, expected);
+        }, 0);
+        return () => clearTimeout(timer);
+      }, [state.bootstrap]);
+
       const api = React.useMemo(
         () => ({
           onAction: (name, arg) => {
@@ -9773,6 +11843,13 @@ window.__ModuleLoader__.load({
           onSelectionChange: updateSelection,
           onInput: handleInput,
           onPaste: handlePaste,
+          onSurfaceMouseDown: handleSurfaceMouseDown,
+          onSurfaceDoubleClick: handleSurfaceDoubleClick,
+          onSurfaceCopy: handleSurfaceCopy,
+          onSurfaceCut: handleSurfaceCut,
+          onBeforeInput: handleBeforeInput,
+          onCompositionStart: handleCompositionStart,
+          onCompositionEnd: handleCompositionEnd,
           onBlur: () => {
             updateSelection();
             void flushPending();
@@ -9787,8 +11864,15 @@ window.__ModuleLoader__.load({
         [
           closeDialog,
           flushPending,
+          handleCompositionEnd,
+          handleCompositionStart,
           handleInput,
           handlePaste,
+          handleBeforeInput,
+          handleSurfaceCopy,
+          handleSurfaceCut,
+          handleSurfaceDoubleClick,
+          handleSurfaceMouseDown,
           loadDocument,
           onAdvancedPath,
           onFilePicked,
@@ -9825,10 +11909,12 @@ window.__ModuleLoader__.load({
       }, [loadDocument, refreshList]);
 
       React.useEffect(() => {
+        const seq = placementSeqRef.current;
         const caret = caretRef.current;
         caretRef.current = null;
         if (!caret || !surfaceRef.current) return undefined;
         const timer = setTimeout(() => {
+          if (seq !== placementSeqRef.current) return;
           if (surfaceRef.current) placeSelection(surfaceRef.current, caret);
         }, 0);
         return () => clearTimeout(timer);
@@ -9940,10 +12026,38 @@ window.__ModuleLoader__.load({
       readFormatting,
       normalizeSelection,
       isCollapsed,
+      sameSelection,
       blockRangesForSelection,
       formatTextOpsForSelection,
+      wordRangeAt,
+      paragraphFlow,
+      moveSelectionFocus,
+      selectionForKeyboardExtension,
+      selectionStateOf,
+      selectionTextOf,
+      selectionPointAt,
+      domRangeForPoints,
+      selectDomRange,
+      selectionDiagnostics,
+      planTextFlush,
+      applyTextDiff,
+      SHORTCUT_TABLE,
+      SHORTCUT_COMMAND_PREFIX,
+      BOLD_RESERVED_NOTE,
+      detectBoldReservation,
+      shortcutCombo,
+      shortcutForCombo,
+      shortcutEnvironment,
+      shortcutCommandDefaults,
+      matchShortcut,
+      modalOutsidePanel,
+      bindShortcutCapture,
+      shortcutDiagnostics,
+      registerShortcutCommands,
       newBlockIdFromOpResult,
       domTextOfBlock,
+      domSelectionToModel,
+      eventIsComposing,
       textPointAtOffset,
       offsetInBlockElement,
       blockElementFor,

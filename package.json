@@ -1,11 +1,11 @@
 {
   "name": "dsh-doc-editor-plugin",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "ahmadfarizoffice-dotcom",
-  "description": "Word-like document editor inside DeepSeek Harness: resizable seven-tab ribbon (default 1/10 viewport, drag or keyboard), redesigned 22 px theme-aware icons, an in-panel Open file chooser (Ctrl+O) plus native pickers for any local folder, prepared workspace and chat session, real line breaks, DOCX/Pages/DOC/ODT/RTF/HTML/Markdown, PDF export and 26 agent tools.",
+  "description": "Word-like document editor inside DeepSeek Harness with a LibreOffice-backed optional engine (52 MCP tools), 10vh draggable ribbon, theme-aware 22px icons, in-panel file chooser and Ctrl+O, DSH-aware shortcuts (Ctrl+I/U/Z/Y/S/F/O/K plus Ctrl+Shift+B because the host reserves Ctrl+B), multi-paragraph selection, hard line breaks and duplicate-free typing.",
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",

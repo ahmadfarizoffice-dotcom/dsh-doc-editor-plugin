@@ -99,6 +99,9 @@ const DEFAULT_TOOLS = [
   "document_convert",
   "document_export_pdf",
   "document_save",
+  // Optional external engine (LibreOffice), reported honestly when absent.
+  "document_engine_status",
+  "document_convert_external",
 ];
 
 function resolveWorkspace(config) {
