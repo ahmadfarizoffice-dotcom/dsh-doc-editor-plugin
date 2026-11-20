@@ -9406,6 +9406,9 @@ window.__ModuleLoader__.load({
       const handleBackspace = React.useCallback(async () => {
         const current = stateRef.current;
         if (!current.bootstrap || isReadOnly(current)) return;
+        // Flush pending typing first: the deletion range is derived from the
+        // caret, and a stale Host snapshot clamps it onto the previous text.
+        await flushPending();
         const selection = normalizeSelection(
           selectionRef.current,
           selectionOrderOf(current.bootstrap.document),
@@ -9416,11 +9419,12 @@ window.__ModuleLoader__.load({
           return;
         }
         await mergeBackward();
-      }, [deleteSelectedRange, isReadOnly, mergeBackward]);
+      }, [deleteSelectedRange, flushPending, isReadOnly, mergeBackward]);
 
       const handleDelete = React.useCallback(async () => {
         const current = stateRef.current;
         if (!current.bootstrap || isReadOnly(current)) return;
+        await flushPending();
         const selection = normalizeSelection(
           selectionRef.current,
           selectionOrderOf(current.bootstrap.document),
@@ -9431,7 +9435,7 @@ window.__ModuleLoader__.load({
           return;
         }
         await mergeForward();
-      }, [deleteSelectedRange, isReadOnly, mergeForward]);
+      }, [deleteSelectedRange, flushPending, isReadOnly, mergeForward]);
 
       handleBackspaceRef.current = handleBackspace;
 
@@ -9681,11 +9685,6 @@ window.__ModuleLoader__.load({
               ),
             );
             if (!selection) return;
-            if (!isCollapsed(selection)) {
-              event.preventDefault();
-              void handleBackspace();
-              return;
-            }
             if ((selection.start.offset || 0) > 0) return;
             event.preventDefault();
             void handleBackspace();
