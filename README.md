@@ -1,4 +1,4 @@
-# Documents for DeepSeek Harness
+﻿# Documents for DeepSeek Harness
 
 Reads, creates, edits, converts and exports documents from inside DeepSeek
 Harness, with a **Documents** panel in the main column and document tools the

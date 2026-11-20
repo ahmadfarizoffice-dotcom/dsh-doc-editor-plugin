@@ -172629,6 +172629,8 @@ var init_render = __esm({
 
 // packages/core/dist/service/service.js
 import path3 from "node:path";
+import { tmpdir as tmpdir2 } from "node:os";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 
 // packages/core/dist/model/edit.js
 init_access();
@@ -174176,9 +174178,6 @@ function resolveRevision(doc, revisionId2, action) {
   doc.metadata.modified = (/* @__PURE__ */ new Date()).toISOString();
   return { found };
 }
-
-// packages/core/dist/service/service.js
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 
 // packages/core/dist/formats/index.js
 var formats_exports = {};
@@ -194679,6 +194678,9 @@ function round3(value) {
 function normalizeText(text2) {
   return text2.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
 }
+function normalizeConversionText(text2) {
+  return normalizeText(text2);
+}
 function tokenCounts(text2) {
   const counts = /* @__PURE__ */ new Map();
   if (text2.length === 0)
@@ -194717,6 +194719,9 @@ function ratio(before, after) {
 }
 function structuralScore(before, after) {
   return clamp01(ratio(before.paragraphs, after.paragraphs) * 0.5 + ratio(before.tables, after.tables) * 0.25 + ratio(before.images, after.images) * 0.25);
+}
+function structuralPreservationScore(before, after) {
+  return structuralScore(before, after);
 }
 function lossPenalty(losses) {
   let penalty = 0;
@@ -196250,7 +196255,7 @@ init_layout();
 
 // packages/core/dist/engine/libreoffice.js
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -196753,6 +196758,107 @@ async function detectLibreOffice(input = {}) {
   detectionCache.set(key, available);
   return available;
 }
+var SHARED_PROFILE_PREFIX = "dsh-libreoffice-profile-";
+var sharedProfiles = /* @__PURE__ */ new Set();
+var activeProfiles = /* @__PURE__ */ new Set();
+var sharedProfileOwner = null;
+var profileDecisionQueue = Promise.resolve();
+var exitHookInstalled = false;
+function installProfileExitHook() {
+  if (exitHookInstalled)
+    return;
+  exitHookInstalled = true;
+  process.once("exit", () => {
+    for (const profilePath of sharedProfiles) {
+      try {
+        rmSync(profilePath, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  });
+}
+function libreOfficeSharedProfilePath(executable) {
+  const digest = createHash2("sha1").update(executable.toLowerCase()).digest("hex").slice(0, 12);
+  return path.join(tmpdir(), `${SHARED_PROFILE_PREFIX}${digest}-${process.pid}`);
+}
+async function acquireProfile(executable, options = {}) {
+  const previous = profileDecisionQueue;
+  let releaseDecision;
+  profileDecisionQueue = new Promise((resolve) => {
+    releaseDecision = resolve;
+  });
+  await previous.catch(() => void 0);
+  try {
+    if (options.forceUnique !== true) {
+      const sharedPath = libreOfficeSharedProfilePath(executable);
+      if (sharedProfileOwner === null) {
+        sharedProfileOwner = sharedPath;
+        try {
+          await mkdir(sharedPath, { recursive: true });
+        } catch (error) {
+          sharedProfileOwner = null;
+          throw new LibreOfficeError("ENGINE_FAILED", `Could not create the shared LibreOffice profile: ${error.message}`, { profile: sharedPath });
+        }
+        sharedProfiles.add(sharedPath);
+        activeProfiles.add(sharedPath);
+        installProfileExitHook();
+        let released2 = false;
+        return {
+          path: sharedPath,
+          mode: "shared",
+          release: async () => {
+            if (released2)
+              return;
+            released2 = true;
+            activeProfiles.delete(sharedPath);
+            if (sharedProfileOwner === sharedPath)
+              sharedProfileOwner = null;
+          }
+        };
+      }
+    }
+    const uniquePath = await mkdtemp(path.join(options.tempDirectory ?? tmpdir(), "dsh-libreoffice-concurrent-")).catch((error) => {
+      throw new LibreOfficeError("ENGINE_FAILED", `Could not create an isolated LibreOffice profile: ${error.message}`);
+    });
+    activeProfiles.add(uniquePath);
+    let released = false;
+    return {
+      path: uniquePath,
+      mode: "unique",
+      release: async () => {
+        if (released)
+          return;
+        released = true;
+        activeProfiles.delete(uniquePath);
+        await rm(uniquePath, { recursive: true, force: true }).catch(() => void 0);
+      }
+    };
+  } finally {
+    releaseDecision();
+  }
+}
+function libreOfficeProfileDiagnostics() {
+  return {
+    sharedProfile: sharedProfileOwner,
+    sharedInUse: sharedProfileOwner !== null,
+    activeProfiles: [...activeProfiles],
+    knownSharedProfiles: [...sharedProfiles]
+  };
+}
+async function disposeLibreOfficeProfiles() {
+  const removed = [];
+  const skipped = [];
+  for (const profilePath of [...sharedProfiles]) {
+    if (profilePath === sharedProfileOwner) {
+      skipped.push(profilePath);
+      continue;
+    }
+    await rm(profilePath, { recursive: true, force: true }).catch(() => void 0);
+    sharedProfiles.delete(profilePath);
+    removed.push(profilePath);
+  }
+  return { removed, skipped };
+}
 function resolveConversionFormat(format2) {
   if (typeof format2 !== "string") {
     throw new LibreOfficeError("FORMAT_UNSUPPORTED", "Conversion format must be a string", { format: format2 });
@@ -196931,16 +197037,18 @@ async function performConversion(options) {
   if ("rejection" in launch) {
     throw new LibreOfficeError("ENGINE_UNAVAILABLE", `The detected LibreOffice executable cannot be launched without a shell (${launch.rejection})`, { detection, rejection: launch.rejection });
   }
-  const tempDirectory = options.tempDirectory ?? path.join(tmpdir(), "dsh-libreoffice-");
-  const tempRoot = await mkdtemp(tempDirectory).catch((error) => {
-    throw new LibreOfficeError("ENGINE_FAILED", `Could not create a temporary conversion directory: ${error.message}`);
+  const lease = await acquireProfile(detection.path, {
+    tempDirectory: options.tempDirectory,
+    forceUnique: options.isolatedProfile === true
   });
-  const outDirectory = path.join(tempRoot, "out");
-  const userProfile = path.join(tempRoot, "profile");
-  const profileUrl = pathToFileURL(userProfile).href;
+  let tempRoot;
   try {
+    tempRoot = await mkdtemp(path.join(options.tempDirectory ?? tmpdir(), "dsh-libreoffice-")).catch((error) => {
+      throw new LibreOfficeError("ENGINE_FAILED", `Could not create a temporary conversion directory: ${error.message}`);
+    });
+    const outDirectory = path.join(tempRoot, "out");
+    const profileUrl = pathToFileURL(lease.path).href;
     await mkdir(outDirectory, { recursive: true });
-    await mkdir(userProfile, { recursive: true });
     const args = [
       `-env:UserInstallation=${profileUrl}`,
       "--headless",
@@ -197042,18 +197150,37 @@ async function performConversion(options) {
       warnings: collectWarnings(probe.stdout, probe.stderr),
       command: { executable: command, args: fullArgs },
       userProfile: profileUrl,
+      userProfileMode: lease.mode,
+      profileReused: lease.mode === "shared",
+      conversionTempDirectory: tempRoot,
+      retried: false,
+      attempts: 1,
       stdout: probe.stdout,
       stderr: probe.stderr,
       ...outputPath === void 0 ? { dataBase64: buffer.toString("base64") } : {}
     };
     return { buffer, outputPath: outputPath ?? null, result, detection };
   } finally {
-    await rm(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+    if (tempRoot !== void 0) {
+      await rm(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+    }
+    await lease.release();
   }
 }
 async function convertWithLibreOffice(options) {
-  const { result } = await performConversion(options);
-  return result;
+  try {
+    const { result } = await performConversion(options);
+    return result;
+  } catch (error) {
+    const transient = error instanceof LibreOfficeError && (error.code === "ENGINE_FAILED" || error.code === "OUTPUT_MISSING");
+    if (!transient || options.isolatedProfile === true)
+      throw error;
+    const { result } = await performConversion({
+      ...options,
+      isolatedProfile: true
+    });
+    return { ...result, retried: true, attempts: 2 };
+  }
 }
 async function renderPdfWithLibreOffice(docxPath, options = {}) {
   const validated = assertUsablePath(docxPath, "docxPath");
@@ -197064,7 +197191,7 @@ async function renderPdfWithLibreOffice(docxPath, options = {}) {
   if (extension !== "docx" && extension !== "dotx") {
     throw new LibreOfficeError("FORMAT_UNSUPPORTED", "renderPdfWithLibreOffice expects a .docx or .dotx input", { docxPath: validated, extension });
   }
-  const { result } = await performConversion({
+  const result = await convertWithLibreOffice({
     ...options,
     inputPath: validated,
     format: "pdf"
@@ -197079,7 +197206,9 @@ async function renderPdfWithLibreOffice(docxPath, options = {}) {
     durationMs: result.durationMs,
     version: result.version,
     path: null,
-    warnings: result.warnings
+    warnings: result.warnings,
+    retried: result.retried,
+    attempts: result.attempts
   };
 }
 function countPdfPages(bytes) {
@@ -197153,6 +197282,125 @@ async function comparePdfEngines(input) {
     pixelComparison: "not-performed",
     notes,
     checkedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
+// packages/core/dist/engine/routing.js
+var ENGINE_PREFERENCE_DEFAULT = "auto";
+var ENGINE_PREFERENCES = Object.freeze([
+  "auto",
+  "libreoffice",
+  "internal"
+]);
+var LIBREOFFICE_ROUTED_FORMATS = Object.freeze([
+  "docx",
+  "odt",
+  "rtf",
+  "html",
+  "pdf"
+]);
+var INTERNAL_OWNED_FORMATS = Object.freeze(["txt"]);
+var FORMAT_ALIASES = Object.freeze({
+  text: "txt",
+  htm: "html",
+  xhtml: "html",
+  markdown: "md"
+});
+function isEnginePreference(value) {
+  return typeof value === "string" && ENGINE_PREFERENCES.includes(value);
+}
+function normalizeEnginePreference(value, fallback = ENGINE_PREFERENCE_DEFAULT) {
+  if (typeof value !== "string")
+    return fallback;
+  const normalized = value.trim().toLowerCase();
+  return isEnginePreference(normalized) ? normalized : fallback;
+}
+function parseEnginePreference(value) {
+  if (typeof value !== "string") {
+    throw new RangeError(`engine must be one of ${ENGINE_PREFERENCES.join(", ")} (got ${typeof value})`);
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!isEnginePreference(normalized)) {
+    throw new RangeError(`engine must be one of ${ENGINE_PREFERENCES.join(", ")} (got ${JSON.stringify(value)})`);
+  }
+  return normalized;
+}
+function normalizeRoutingFormat(value) {
+  if (typeof value !== "string")
+    return "";
+  const normalized = value.trim().toLowerCase().replace(/^\./, "");
+  return FORMAT_ALIASES[normalized] ?? normalized;
+}
+var ADAPTER_ALIASES = Object.freeze({
+  txt: "text",
+  md: "markdown"
+});
+function adapterFormatFor(format2) {
+  const normalized = normalizeRoutingFormat(format2);
+  return ADAPTER_ALIASES[normalized] ?? normalized;
+}
+function route(input, engine, reason, fallbackReason, capable) {
+  return {
+    engine,
+    preference: input.preference,
+    format: normalizeRoutingFormat(input.format),
+    available: input.available,
+    capable,
+    reason,
+    fallbackReason
+  };
+}
+function routeConversion(input) {
+  const format2 = normalizeRoutingFormat(input.format);
+  const preference = isEnginePreference(input.preference) ? input.preference : ENGINE_PREFERENCE_DEFAULT;
+  const normalized = { ...input, preference, format: format2 };
+  const capable = LIBREOFFICE_ROUTED_FORMATS.includes(format2);
+  if (preference === "internal") {
+    return route(normalized, "internal", "preference-internal", null, capable);
+  }
+  if (!capable) {
+    return route(normalized, "internal", INTERNAL_OWNED_FORMATS.includes(format2) ? "internal-format" : "format-unsupported", null, capable);
+  }
+  if (!input.available) {
+    return route(normalized, "internal", "engine-unavailable", "engine-unavailable", capable);
+  }
+  if (input.textLoss === true && format2 !== "pdf") {
+    return route(normalized, "internal", "text-loss", "text-loss", capable);
+  }
+  return route(normalized, "libreoffice", "libreoffice", null, capable);
+}
+function routeAfterFailure(input, failure) {
+  const capable = LIBREOFFICE_ROUTED_FORMATS.includes(normalizeRoutingFormat(input.format));
+  return route({ ...input, format: normalizeRoutingFormat(input.format) }, "internal", failure, failure, capable);
+}
+function fallbackReasonForError(error) {
+  if (error instanceof LibreOfficeError) {
+    if (error.code === "ENGINE_TIMEOUT")
+      return "timeout";
+    if (error.code === "ENGINE_UNAVAILABLE")
+      return "engine-unavailable";
+    return "conversion-failed";
+  }
+  const code2 = error && typeof error === "object" ? error.code : void 0;
+  if (typeof code2 === "string") {
+    if (code2 === "ENGINE_TIMEOUT")
+      return "timeout";
+    if (code2 === "ENGINE_UNAVAILABLE")
+      return "engine-unavailable";
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed? ?out|timeout/i.test(message))
+    return "timeout";
+  return "conversion-failed";
+}
+function describeRoute(routeValue) {
+  return {
+    engine: routeValue.engine,
+    reason: routeValue.reason,
+    fallbackReason: routeValue.fallbackReason,
+    preference: routeValue.preference,
+    available: routeValue.available,
+    capable: routeValue.capable
   };
 }
 
@@ -197451,10 +197699,17 @@ var Workspace = class _Workspace {
 };
 
 // packages/core/dist/service/service.js
+var LIBREOFFICE_RETRY_WARNING = "LibreOffice conversion was retried with an isolated user profile after a transient failure.";
 var DocumentService = class _DocumentService {
   workspace;
   sessions = /* @__PURE__ */ new Map();
   maxImportBytes;
+  verifySaveWithLibreOffice;
+  engineTempDirectory;
+  engineTimeoutMs;
+  enginePreferenceValue;
+  /** The most recent explicit routing decision, for `engineStatus()`. */
+  lastRoute = null;
   constructor(options = {}) {
     const root = options.workspaceRoot ?? process.env.DSH_DOC_WORKSPACE ?? path3.join(process.cwd(), ".dsh-doc-data");
     const allowed = options.allowedReadRoots ?? (process.env.DSH_DOC_ALLOWED_ROOTS ? process.env.DSH_DOC_ALLOWED_ROOTS.split(path3.delimiter).filter(Boolean) : [process.cwd()]);
@@ -197465,6 +197720,10 @@ var DocumentService = class _DocumentService {
       auditPath: options.auditPath ?? process.env.DSH_DOC_AUDIT_LOG
     });
     this.maxImportBytes = options.maxImportBytes ?? Number(process.env.DSH_DOC_MAX_IMPORT_MB ?? "256") * 1024 * 1024;
+    this.enginePreferenceValue = options.engine !== void 0 ? parseEnginePreference(options.engine) : normalizeEnginePreference(process.env.DSH_DOC_ENGINE, ENGINE_PREFERENCE_DEFAULT);
+    this.verifySaveWithLibreOffice = options.verifySaveWithLibreOffice === true;
+    this.engineTempDirectory = options.engineTempDirectory;
+    this.engineTimeoutMs = options.engineTimeoutMs;
   }
   async init() {
     await this.workspace.init();
@@ -197609,21 +197868,79 @@ var DocumentService = class _DocumentService {
       createdAt: snapshot.metadata.created ?? session.createdAt,
       sourceFormat: "docx",
       wordCount: countWords3(documentText(snapshot)),
-      pageCount: layout.pageCount
+      pageCount: layout.pageCount,
+      engine: "internal",
+      enginePreference: this.enginePreferenceValue
     });
     if (session.revision === revisionAtSave)
       session.dirty = false;
     const savedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const verification = this.verifySaveWithLibreOffice ? await this.verifySavedDocx(exported.buffer, layout.pageCount) : null;
     await this.workspace.audit({
       action: "document_save",
       documentId,
       outcome: "ok",
-      detail: { bytes: exported.buffer.byteLength }
+      detail: {
+        bytes: exported.buffer.byteLength,
+        engine: "internal",
+        enginePreference: this.enginePreferenceValue,
+        ...verification ? {
+          verificationEngine: verification.engine,
+          verificationPages: verification.pageCount
+        } : {}
+      }
     });
     return {
       path: filePath ? target : path3.join(this.workspace.documentDir(documentId), "document.docx"),
       savedAt,
-      bytes: exported.buffer.byteLength
+      bytes: exported.buffer.byteLength,
+      engine: "internal",
+      enginePreference: this.enginePreferenceValue,
+      verification
+    };
+  }
+  /**
+   * Optional, off-by-default save check: render the exact DOCX bytes that were
+   * stored through LibreOffice and report the page count. A failure is reported
+   * as an internal fallback, never as a failed save.
+   */
+  async verifySavedDocx(docx, layoutPageCount) {
+    const { available, detection } = await this.routingDetectionFor("pdf");
+    const route2 = routeConversion({
+      preference: this.enginePreferenceValue,
+      available,
+      format: "pdf"
+    });
+    if (route2.engine === "libreoffice" && detection) {
+      try {
+        const rendered = await this.convertDocxToPdf(docx, detection);
+        return {
+          engine: "libreoffice",
+          pageCount: rendered.pageCount,
+          reason: route2.reason,
+          fallbackReason: null
+        };
+      } catch (error) {
+        const fallback = routeAfterFailure({
+          preference: this.enginePreferenceValue,
+          available,
+          format: "pdf"
+        }, fallbackReasonForError(error));
+        this.lastRoute = fallback;
+        return {
+          engine: "internal",
+          pageCount: layoutPageCount,
+          reason: fallback.reason,
+          fallbackReason: fallback.fallbackReason
+        };
+      }
+    }
+    this.lastRoute = route2;
+    return {
+      engine: "internal",
+      pageCount: layoutPageCount,
+      reason: route2.reason,
+      fallbackReason: route2.fallbackReason
     };
   }
   async saveDocumentAs(documentId, filePath) {
@@ -197632,24 +197949,34 @@ var DocumentService = class _DocumentService {
     const session = this.session(documentId);
     const extension = path3.extname(target).slice(1).toLowerCase();
     if (extension === "docx" || extension === "dotx" || extension === "docm") {
-      return this.saveDocument(documentId, target);
+      const saved = await this.saveDocument(documentId, target);
+      return {
+        path: saved.path,
+        savedAt: saved.savedAt,
+        bytes: saved.bytes,
+        engine: saved.engine,
+        fallbackReason: null
+      };
     }
-    const formats = await this.tryFormats();
-    if (!formats)
-      throw new ServiceError("FORMAT_UNAVAILABLE", `No exporter is available for .${extension}`);
-    const result = await formats.exportAny(session.document, extension);
+    const outcome = await this.exportThroughEngine(session.document, extension);
     await fsMkdir(path3.dirname(target), { recursive: true });
-    await fsWriteFile(target, result.buffer);
+    await fsWriteFile(target, outcome.buffer);
     await this.workspace.audit({
       action: "document_save_as",
       documentId,
       outcome: "ok",
-      detail: { format: extension }
+      detail: {
+        format: extension,
+        engine: outcome.route.engine,
+        fallbackReason: outcome.route.fallbackReason
+      }
     });
     return {
       path: target,
       savedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      bytes: result.buffer.byteLength
+      bytes: outcome.buffer.byteLength,
+      engine: outcome.route.engine,
+      fallbackReason: outcome.route.fallbackReason
     };
   }
   async closeDocument(documentId, options = {}) {
@@ -198437,6 +198764,56 @@ var DocumentService = class _DocumentService {
     return { label: entry.label, revision: session.revision };
   }
   /* ---------------------------------------------------------- conversion */
+  /** Engine preference configured for this service instance. */
+  enginePreference() {
+    return this.enginePreferenceValue;
+  }
+  /**
+   * Resolves the engine this service would use for the flagship conversion
+   * (PDF) right now, including why. Never spawns a conversion.
+   */
+  async engineInUse() {
+    const detection = await this.detectEngine();
+    const route2 = routeConversion({
+      preference: this.enginePreferenceValue,
+      available: detection.available,
+      format: "pdf"
+    });
+    return {
+      engine: route2.engine,
+      preference: route2.preference,
+      available: detection.available,
+      reason: route2.reason,
+      fallbackReason: route2.fallbackReason,
+      path: detection.path,
+      version: detection.version ?? null
+    };
+  }
+  /** Changes the engine preference for this service (not process-wide). */
+  async setEnginePreference(value) {
+    let preference;
+    try {
+      preference = parseEnginePreference(value);
+    } catch (error) {
+      throw new ServiceError("INVALID_ARGUMENT", error instanceof Error ? error.message : String(error), { engine: value, accepted: [...ENGINE_PREFERENCES] });
+    }
+    const previous = this.enginePreferenceValue;
+    this.enginePreferenceValue = preference;
+    const resolved = await this.engineInUse();
+    await this.workspace.audit({
+      action: "document_set_engine",
+      outcome: "ok",
+      detail: { previous, preference, engine: resolved.engine }
+    });
+    return {
+      previous,
+      preference,
+      engine: resolved.engine,
+      available: resolved.available,
+      reason: resolved.reason,
+      fallbackReason: resolved.fallbackReason
+    };
+  }
   async convert(input) {
     if (input.outputPath)
       this.workspace.assertWritable();
@@ -198452,38 +198829,89 @@ var DocumentService = class _DocumentService {
     } else {
       throw new ServiceError("INVALID_ARGUMENT", "convert requires documentId or path");
     }
-    const result = await convert2.convert(document, { to: input.to });
+    const outcome = await this.exportThroughEngine(document, input.to);
     if (input.outputPath) {
       const target = this.workspace.resolveWritePath(input.outputPath);
       await fsMkdir(path3.dirname(target), { recursive: true });
-      await fsWriteFile(target, result.buffer);
+      await fsWriteFile(target, outcome.buffer);
     }
     await this.workspace.audit({
       action: "document_convert",
       documentId: input.documentId,
       outcome: "ok",
-      detail: { to: input.to }
+      detail: {
+        to: input.to,
+        engine: outcome.route.engine,
+        fallbackReason: outcome.route.fallbackReason
+      }
     });
     return {
       format: input.to,
-      bytes: result.buffer.byteLength,
-      losses: result.losses,
-      warnings: result.warnings,
+      bytes: outcome.buffer.byteLength,
+      losses: outcome.losses,
+      warnings: outcome.warnings,
       outputPath: input.outputPath ?? null,
-      ...input.outputPath ? {} : { dataBase64: result.buffer.toString("base64") }
+      engine: outcome.route.engine,
+      preference: outcome.route.preference,
+      reason: outcome.route.reason,
+      fallbackReason: outcome.route.fallbackReason,
+      report: outcome.report,
+      pageCount: outcome.pageCount,
+      ...input.outputPath ? {} : { dataBase64: outcome.buffer.toString("base64") }
     };
   }
   async exportPdf(documentId, outputPath) {
     if (outputPath)
       this.workspace.assertWritable();
+    const started = Date.now();
     const session = this.session(documentId);
-    const render = await Promise.resolve().then(() => (init_render(), render_exports));
-    const layout = this.layout(session);
-    const buffer = await render.renderPdf(layout, {
-      title: session.document.metadata.title,
-      author: session.document.metadata.creator,
-      images: render.mediaMap(session.document)
+    const snapshot = structuredClone(session.document);
+    const { available, detection } = await this.routingDetectionFor("pdf");
+    let route2 = routeConversion({
+      preference: this.enginePreferenceValue,
+      available,
+      format: "pdf"
     });
+    let buffer = null;
+    let pageCount = 0;
+    const warnings = [];
+    if (route2.engine === "libreoffice" && detection) {
+      try {
+        const docx = await exportDocx(snapshot, { preserveTimestamps: true });
+        const rendered = await this.convertDocxToPdf(docx.buffer, detection);
+        buffer = rendered.buffer;
+        pageCount = rendered.pageCount;
+        warnings.push(...rendered.warnings);
+      } catch (error) {
+        route2 = routeAfterFailure({
+          preference: this.enginePreferenceValue,
+          available,
+          format: "pdf"
+        }, fallbackReasonForError(error));
+      }
+    }
+    if (!buffer) {
+      const render = await Promise.resolve().then(() => (init_render(), render_exports));
+      const layout = layoutDocument(snapshot);
+      buffer = await render.renderPdf(layout, {
+        title: snapshot.metadata.title,
+        author: snapshot.metadata.creator,
+        images: render.mediaMap(snapshot)
+      });
+      pageCount = countPdfPages(buffer) ?? layout.pageCount;
+    }
+    this.lastRoute = route2;
+    const durationMs = Date.now() - started;
+    const result = {
+      bytes: buffer.byteLength,
+      pageCount,
+      engine: route2.engine,
+      preference: route2.preference,
+      reason: route2.reason,
+      fallbackReason: route2.fallbackReason,
+      durationMs,
+      warnings
+    };
     if (outputPath) {
       const target = this.workspace.resolveWritePath(outputPath);
       await fsMkdir(path3.dirname(target), { recursive: true });
@@ -198492,17 +198920,16 @@ var DocumentService = class _DocumentService {
         action: "document_export_pdf",
         documentId,
         outcome: "ok",
-        detail: { bytes: buffer.byteLength }
+        detail: {
+          bytes: buffer.byteLength,
+          engine: route2.engine,
+          fallbackReason: route2.fallbackReason
+        }
       });
-      return {
-        bytes: buffer.byteLength,
-        pageCount: layout.pageCount,
-        path: target
-      };
+      return { ...result, path: target };
     }
     return {
-      bytes: buffer.byteLength,
-      pageCount: layout.pageCount,
+      ...result,
       path: null,
       dataBase64: buffer.toString("base64")
     };
@@ -198511,58 +198938,353 @@ var DocumentService = class _DocumentService {
     if (outputPath)
       this.workspace.assertWritable();
     const session = this.session(documentId);
-    const normalized = format2.toLowerCase().replace(/^\./, "");
-    if (normalized === "docx" || normalized === "dotx" || normalized === "docm") {
+    const normalized = normalizeRoutingFormat(format2);
+    if (normalized === "dotx" || normalized === "docm") {
       const exported = await exportDocx(session.document, {
         flavor: normalized
       });
+      const route2 = routeConversion({
+        preference: this.enginePreferenceValue,
+        available: false,
+        format: normalized
+      });
+      this.lastRoute = route2;
+      const base = {
+        format: normalized,
+        bytes: exported.buffer.byteLength,
+        losses: [],
+        warnings: [],
+        engine: "internal",
+        preference: route2.preference,
+        reason: route2.reason,
+        fallbackReason: route2.fallbackReason,
+        report: null,
+        pageCount: null
+      };
       if (outputPath) {
         const target = this.workspace.resolveWritePath(outputPath);
         await fsMkdir(path3.dirname(target), { recursive: true });
         await fsWriteFile(target, exported.buffer);
-        return {
-          format: normalized,
-          bytes: exported.buffer.byteLength,
-          path: target,
-          losses: []
-        };
+        return { ...base, path: target };
       }
       return {
-        format: normalized,
-        bytes: exported.buffer.byteLength,
+        ...base,
         path: null,
-        dataBase64: exported.buffer.toString("base64"),
-        losses: []
+        dataBase64: exported.buffer.toString("base64")
       };
     }
     const formats = await this.tryFormats();
     if (!formats)
       throw new ServiceError("FORMAT_UNAVAILABLE", `No exporter available for ${format2}`);
-    const result = await formats.exportAny(session.document, normalized);
+    const outcome = await this.exportThroughEngine(session.document, normalized);
+    const result = {
+      format: normalized,
+      bytes: outcome.buffer.byteLength,
+      losses: outcome.losses,
+      warnings: outcome.warnings,
+      engine: outcome.route.engine,
+      preference: outcome.route.preference,
+      reason: outcome.route.reason,
+      fallbackReason: outcome.route.fallbackReason,
+      report: outcome.report,
+      pageCount: outcome.pageCount
+    };
     if (outputPath) {
       const target = this.workspace.resolveWritePath(outputPath);
       await fsMkdir(path3.dirname(target), { recursive: true });
-      await fsWriteFile(target, result.buffer);
-      return {
-        format: normalized,
-        bytes: result.buffer.byteLength,
-        path: target,
-        losses: result.losses ?? []
-      };
+      await fsWriteFile(target, outcome.buffer);
+      await this.workspace.audit({
+        action: "document_export",
+        documentId,
+        outcome: "ok",
+        detail: {
+          format: normalized,
+          engine: outcome.route.engine,
+          fallbackReason: outcome.route.fallbackReason
+        }
+      });
+      return { ...result, path: target };
     }
     return {
-      format: normalized,
-      bytes: result.buffer.byteLength,
+      ...result,
       path: null,
-      dataBase64: result.buffer.toString("base64"),
-      losses: result.losses ?? []
+      dataBase64: outcome.buffer.toString("base64")
     };
+  }
+  /* ------------------------------------------------- engine routing bits */
+  async detectEngine(refresh = false) {
+    return detectLibreOffice({ refresh });
+  }
+  /**
+   * Detection for a conversion route. An explicit `internal` preference never
+   * probes (and therefore never launches) LibreOffice; neither does a target
+   * format the routing table keeps on the internal adapter (plain text,
+   * markdown, template flavours).
+   */
+  async routingDetection() {
+    if (this.enginePreferenceValue === "internal") {
+      return { available: false, detection: null };
+    }
+    const detection = await this.detectEngine();
+    return { available: detection.available, detection };
+  }
+  /**
+   * Route-specific detection: only probe LibreOffice when the target format
+   * could actually use it. This is what makes `internal` (and txt/markdown)
+   * never spawn a process.
+   */
+  async routingDetectionFor(format2) {
+    if (this.enginePreferenceValue === "internal") {
+      return { available: false, detection: null };
+    }
+    const capable = routeConversion({
+      preference: this.enginePreferenceValue,
+      available: false,
+      format: format2
+    }).capable;
+    if (!capable)
+      return { available: false, detection: null };
+    return this.routingDetection();
+  }
+  /** Shared options for `convertWithLibreOffice` calls made by this service. */
+  engineConversionOptions() {
+    return {
+      ...this.engineTempDirectory === void 0 ? {} : { tempDirectory: this.engineTempDirectory },
+      ...this.engineTimeoutMs === void 0 ? {} : { timeoutMs: this.engineTimeoutMs }
+    };
+  }
+  /**
+   * Runs one LibreOffice conversion. The adapter retries a transient shared-
+   * profile failure once with an isolated profile; the retry is surfaced as a
+   * warning so it is never silent. Timeouts and missing-engine errors are never
+   * retried, and an explicit external conversion reports its error instead.
+   */
+  async convertWithLibreOfficeRetry(options) {
+    const result = await convertWithLibreOffice(options);
+    return { result, retried: result.retried === true };
+  }
+  /** Runs `work` inside a fresh temporary directory that is always removed. */
+  async withTempDirectory(prefix, work) {
+    const directory = await fsMkdtemp(path3.join(this.engineTempDirectory ?? tmpdir2(), prefix));
+    try {
+      return await work(directory);
+    } finally {
+      await fsRm(directory, { recursive: true, force: true }).catch(() => void 0);
+    }
+  }
+  /** The internal adapter path, measured exactly like the conversion engine. */
+  async internalConversion(document, format2) {
+    const result = await convert(document, {
+      from: "model",
+      to: adapterFormatFor(format2)
+    });
+    return {
+      buffer: result.buffer,
+      losses: result.losses,
+      warnings: result.warnings,
+      report: result.report,
+      pageCount: format2 === "pdf" ? countPdfPages(result.buffer) ?? null : null
+    };
+  }
+  /** DOCX bytes → PDF through LibreOffice, with a counted page total. */
+  async convertDocxToPdf(docx, detection) {
+    return this.withTempDirectory("dsh-doc-pdf-", async (directory) => {
+      const docxPath = path3.join(directory, "input.docx");
+      await fsWriteFile(docxPath, docx);
+      const { result: converted, retried } = await this.convertWithLibreOfficeRetry({
+        inputPath: docxPath,
+        format: "pdf",
+        detection,
+        ...this.engineConversionOptions()
+      });
+      const buffer = Buffer.from(converted.dataBase64 ?? "", "base64");
+      if (buffer.byteLength === 0) {
+        throw new LibreOfficeError("OUTPUT_MISSING", "LibreOffice returned no PDF bytes");
+      }
+      const pageCount = countPdfPages(buffer);
+      if (pageCount === void 0 || pageCount <= 0) {
+        throw new LibreOfficeError("OUTPUT_MISSING", "LibreOffice produced a PDF without countable page objects", { bytes: buffer.byteLength, sha256: converted.sha256 });
+      }
+      return {
+        buffer,
+        pageCount,
+        warnings: [
+          ...converted.warnings,
+          ...retried ? [LIBREOFFICE_RETRY_WARNING] : []
+        ],
+        durationMs: converted.durationMs
+      };
+    });
+  }
+  libreOfficeReport(document, options) {
+    const before = documentStats(document);
+    return {
+      // Text equality is the only content claim this path makes; structure is
+      // measured from the re-imported output when one exists.
+      contentPreservation: 1,
+      structuralPreservation: options.after === void 0 ? 1 : structuralPreservationScore(before, options.after),
+      unsupportedElements: [],
+      durationMs: options.durationMs,
+      verified: options.textEqual !== null,
+      method: options.textEqual === null ? "unverified" : "roundtrip-text",
+      textBefore: before,
+      ...options.after === void 0 ? {} : { textAfter: options.after },
+      roundTripAttempted: options.textEqual !== null
+    };
+  }
+  /**
+   * One LibreOffice attempt for a text-bearing target. Returns `ok: false` with
+   * `text-loss` when the output cannot be re-imported or its normalized text
+   * differs from the model: the caller then keeps the internal adapter.
+   */
+  async libreOfficeExport(document, format2, detection) {
+    if (format2 === "pdf") {
+      const docx2 = await exportDocx(document, { preserveTimestamps: true });
+      const rendered = await this.convertDocxToPdf(docx2.buffer, detection);
+      return {
+        ok: true,
+        buffer: rendered.buffer,
+        pageCount: rendered.pageCount,
+        textEqual: null,
+        warnings: rendered.warnings,
+        report: this.libreOfficeReport(document, {
+          durationMs: rendered.durationMs,
+          textEqual: null,
+          warnings: rendered.warnings
+        })
+      };
+    }
+    const docx = await exportDocx(document, { preserveTimestamps: true });
+    const converted = await this.withTempDirectory("dsh-doc-convert-", async (directory) => {
+      const docxPath = path3.join(directory, "input.docx");
+      await fsWriteFile(docxPath, docx.buffer);
+      const { result, retried } = await this.convertWithLibreOfficeRetry({
+        inputPath: docxPath,
+        format: format2,
+        detection,
+        ...this.engineConversionOptions()
+      });
+      const buffer = Buffer.from(result.dataBase64 ?? "", "base64");
+      if (buffer.byteLength === 0) {
+        throw new LibreOfficeError("OUTPUT_MISSING", `LibreOffice returned no ${format2} bytes`);
+      }
+      return {
+        buffer,
+        warnings: [
+          ...result.warnings,
+          ...retried ? [LIBREOFFICE_RETRY_WARNING] : []
+        ],
+        durationMs: result.durationMs
+      };
+    });
+    const beforeText = normalizeConversionText(documentText(document));
+    let imported;
+    try {
+      imported = await importAny(converted.buffer, `libreoffice.${format2}`);
+    } catch (error) {
+      return {
+        ok: false,
+        reason: "text-loss",
+        detail: `LibreOffice ${format2} output could not be re-imported: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+    const afterText = normalizeConversionText(documentText(imported.document));
+    if (afterText !== beforeText) {
+      return {
+        ok: false,
+        reason: "text-loss",
+        detail: `LibreOffice ${format2} output changed the document text (${beforeText.length} \u2192 ${afterText.length} characters)`
+      };
+    }
+    const after = documentStats(imported.document);
+    return {
+      ok: true,
+      buffer: converted.buffer,
+      pageCount: null,
+      textEqual: true,
+      warnings: converted.warnings,
+      report: this.libreOfficeReport(document, {
+        durationMs: converted.durationMs,
+        textEqual: true,
+        after,
+        warnings: converted.warnings
+      })
+    };
+  }
+  /**
+   * The single routing entry point for `convert()` / `exportDocument()`.
+   * LibreOffice is attempted first when the preference and detection allow it;
+   * every downgrade carries a typed reason in `route`.
+   */
+  async exportThroughEngine(document, target) {
+    const format2 = normalizeRoutingFormat(target);
+    const { available, detection } = await this.routingDetectionFor(format2);
+    let route2 = routeConversion({
+      preference: this.enginePreferenceValue,
+      available,
+      format: format2
+    });
+    if (route2.engine === "libreoffice" && detection) {
+      try {
+        const attempt = await this.libreOfficeExport(document, format2, detection);
+        if (attempt.ok) {
+          this.lastRoute = route2;
+          return {
+            buffer: attempt.buffer,
+            losses: [],
+            warnings: attempt.warnings,
+            report: attempt.report,
+            pageCount: attempt.pageCount,
+            route: route2,
+            textEqual: attempt.textEqual
+          };
+        }
+        route2 = routeConversion({
+          preference: this.enginePreferenceValue,
+          available,
+          format: format2,
+          textLoss: true
+        });
+        const internal2 = await this.internalConversion(document, format2);
+        this.lastRoute = route2;
+        return {
+          ...internal2,
+          warnings: [
+            ...internal2.warnings,
+            `LibreOffice ${format2} output lost document text (${attempt.detail}); the internal adapter was used instead.`
+          ],
+          route: route2,
+          textEqual: false
+        };
+      } catch (error) {
+        route2 = routeAfterFailure({
+          preference: this.enginePreferenceValue,
+          available,
+          format: format2
+        }, fallbackReasonForError(error));
+        const internal2 = await this.internalConversion(document, format2);
+        this.lastRoute = route2;
+        return {
+          ...internal2,
+          warnings: [
+            ...internal2.warnings,
+            `LibreOffice ${format2} conversion failed; the internal adapter was used instead.`
+          ],
+          route: route2,
+          textEqual: null
+        };
+      }
+    }
+    const internal = await this.internalConversion(document, format2);
+    this.lastRoute = route2;
+    return { ...internal, route: route2, textEqual: null };
   }
   /**
    * Reports the optional external engines. Always resolves: an absent
    * LibreOffice install is reported as `available: false` together with the
    * detection evidence (candidates, probe attempts and a stable reason), never
-   * as a silent capability.
+   * as a silent capability. The configured preference, the engine that is
+   * actually in use and the per-format routing decision are reported too.
    */
   async engineStatus(options = {}) {
     const detection = await detectLibreOffice({
@@ -198581,23 +199303,49 @@ var DocumentService = class _DocumentService {
         ...internalExport
       ])
     ].sort();
-    const capabilities = formats.map((format2) => ({
-      format: format2,
-      internal: {
-        import: internalImport.has(format2),
-        export: internalExport.has(format2)
-      },
-      libreoffice: {
+    const capabilities = formats.map((format2) => {
+      const route2 = routeConversion({
+        preference: this.enginePreferenceValue,
         available: detection.available,
-        import: detection.available && libreOfficeImport.has(format2),
-        export: detection.available && Object.hasOwn(LIBREOFFICE_CONVERSION_FORMATS, format2)
-      }
-    }));
+        format: format2
+      });
+      return {
+        format: format2,
+        internal: {
+          import: internalImport.has(format2),
+          export: internalExport.has(format2)
+        },
+        libreoffice: {
+          available: detection.available,
+          import: detection.available && libreOfficeImport.has(format2),
+          export: detection.available && Object.hasOwn(LIBREOFFICE_CONVERSION_FORMATS, format2)
+        },
+        routing: {
+          engine: route2.engine,
+          reason: route2.reason,
+          fallbackReason: route2.fallbackReason
+        }
+      };
+    });
+    const flagRoute = routeConversion({
+      preference: this.enginePreferenceValue,
+      available: detection.available,
+      format: "pdf"
+    });
     return {
       available: detection.available,
       reason: detection.available ? null : detection.reason ?? "not-found",
       checkedAt: detection.checkedAt,
       installHint: LIBREOFFICE_INSTALL_HINT,
+      preference: this.enginePreferenceValue,
+      verifySaveWithLibreOffice: this.verifySaveWithLibreOffice,
+      engineInUse: {
+        engine: flagRoute.engine,
+        reason: flagRoute.reason,
+        fallbackReason: flagRoute.fallbackReason,
+        format: "pdf"
+      },
+      lastRoute: this.lastRoute ? { ...this.lastRoute } : null,
       workspace: { readOnly: this.workspace.readOnly },
       engines: {
         internal: {
@@ -198605,7 +199353,7 @@ var DocumentService = class _DocumentService {
           available: true,
           name: "Built-in layout/PDF renderer and format adapters",
           pdf: { export: true, import: false, pixelAccurate: false },
-          note: "PDF export is produced by the internal layout engine; it is not a LibreOffice render."
+          note: "Used when LibreOffice is unavailable, when the preference is internal, or when a LibreOffice conversion loses text."
         },
         libreoffice: {
           id: "libreoffice",
@@ -198614,6 +199362,8 @@ var DocumentService = class _DocumentService {
           version: detection.version ?? null,
           source: detection.source,
           reason: detection.available ? null : detection.reason ?? "not-found",
+          defaultEngine: true,
+          note: "Default conversion and PDF rendering engine when detected; every fallback is reported as fallbackReason.",
           detection
         }
       },
@@ -204742,7 +205492,7 @@ tool({
   title: "Convert document",
   category: "conversion",
   mutating: true,
-  description: "Converts an open document (or a file path) to another format through the conversion engine. Returns the bytes as base64 or writes them to a workspace path, plus a loss report.",
+  description: "Converts an open document (or a file path) to another format through the default engine (LibreOffice when available, otherwise the internal adapter). Returns the bytes as base64 or writes them to a workspace path, the engine used, any typed fallbackReason and a loss report.",
   inputSchema: {
     documentId: external_exports.string().optional(),
     path: external_exports.string().optional(),
@@ -204756,7 +205506,7 @@ tool({
   title: "Export PDF",
   category: "conversion",
   mutating: true,
-  description: "Renders the document to PDF with the layout engine and returns the page count.",
+  description: "Renders the document to PDF with the default engine (LibreOffice when available, otherwise the internal renderer) and returns the page count plus the engine used and any typed fallbackReason.",
   inputSchema: { documentId: id(), outputPath: external_exports.string().optional() },
   handler: async ({ service }, args) => service.exportPdf(String(args.documentId), args.outputPath ? String(args.outputPath) : void 0)
 });
@@ -204774,7 +205524,7 @@ tool({
   title: "Export document",
   category: "conversion",
   mutating: true,
-  description: "Exports the document to a named format (docx, dotx, docm, pdf, html, md, txt, odt, rtf) as base64 or a workspace path.",
+  description: "Exports the document to a named format (docx, dotx, docm, pdf, html, md, txt, odt, rtf) as base64 or a workspace path, reporting the engine used, any typed fallbackReason and the fidelity report.",
   inputSchema: {
     documentId: id(),
     format: external_exports.string().min(1),
@@ -204786,9 +205536,20 @@ tool({
   name: "document_engine_status",
   title: "External engine status",
   category: "conversion",
-  description: "Reports whether the optional LibreOffice engine is installed and usable, alongside the internal engine capability matrix. When LibreOffice is absent the result is available:false with the detection evidence and reason; it never claims a converter that does not exist.",
+  description: "Reports the configured engine preference (auto, libreoffice or internal), the engine actually in use for PDF conversion, the last routing decision, and the per-format internal vs LibreOffice capability matrix with route reasons. When LibreOffice is absent the result is available:false with the detection evidence and reason; it never claims a converter that does not exist.",
   inputSchema: {},
   handler: async ({ service }) => service.engineStatus()
+});
+tool({
+  name: "document_set_engine",
+  title: "Set conversion engine",
+  category: "conversion",
+  mutating: true,
+  description: "Sets the conversion/PDF engine preference for this service: auto (LibreOffice first with reported fallback), libreoffice (require LibreOffice, report typed fallback when it is missing or fails) or internal (never start LibreOffice). Returns the resolved engine and route reason.",
+  inputSchema: {
+    engine: external_exports.enum(["auto", "libreoffice", "internal"]).describe("Engine preference; auto is LibreOffice-first with fallback")
+  },
+  handler: async ({ service }, args) => service.setEnginePreference(args.engine)
 });
 tool({
   name: "document_convert_external",
@@ -204962,10 +205723,15 @@ export {
   DEFAULT_CONVERSION_TIMEOUT_MS,
   DEFAULT_DETECTION_TIMEOUT_MS,
   DocumentService,
+  ENGINE_PREFERENCES,
+  ENGINE_PREFERENCE_DEFAULT,
+  INTERNAL_OWNED_FORMATS,
   LIBREOFFICE_CONVERSION_FORMATS,
   LIBREOFFICE_INSTALL_HINT,
+  LIBREOFFICE_ROUTED_FORMATS,
   LibreOfficeError,
   PAGE_PRESETS,
+  SHARED_PROFILE_PREFIX,
   ServiceError,
   Workspace,
   availableFormats,
@@ -204977,26 +205743,37 @@ export {
   convertWithLibreOffice,
   countPdfPages,
   createDocument,
+  describeRoute,
   detectFormat,
   detectLibreOffice,
+  disposeLibreOfficeProfiles,
   documentOutline,
   documentStats,
   documentText,
   exportAny,
+  fallbackReasonForError,
   getTool,
   importAny,
   invokeTool,
+  isEnginePreference,
   layoutDocument,
   libreOfficeCandidates,
+  libreOfficeProfileDiagnostics,
+  libreOfficeSharedProfilePath,
   libreOfficeStandardPaths,
   listTools,
   normalizeConversionTimeout,
+  normalizeEnginePreference,
+  normalizeRoutingFormat,
+  parseEnginePreference,
   providerStatus,
   renderHtml,
   renderPdf,
   renderPdfWithLibreOffice,
   resolveConversionFormat,
   reviewDocument,
+  routeAfterFailure,
+  routeConversion,
   searchDocument,
   supportedLibreOfficeFormats
 };

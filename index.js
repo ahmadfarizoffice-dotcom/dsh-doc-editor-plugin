@@ -101,6 +101,7 @@ const DEFAULT_TOOLS = [
   "document_save",
   // Optional external engine (LibreOffice), reported honestly when absent.
   "document_engine_status",
+  "document_set_engine",
   "document_convert_external",
 ];
 

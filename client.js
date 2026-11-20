@@ -1760,6 +1760,188 @@ window.__ModuleLoader__.load({
       };
     }
 
+    /**
+     * The one-character range a Backspace (`backward`) or Delete (`forward`)
+     * removes at `offset`.
+     *
+     * The browser's own deletion is not used for a caret inside a paragraph
+     * while a text flush is pending: the DOM and the model can disagree about
+     * where the caret is by the time the flush lands, and then both the browser
+     * and the op delete (a double delete) or neither does. The panel deletes in
+     * the model instead, so the range must be exact. A surrogate pair counts as
+     * one character, never half of one.
+     */
+    function deletionRangeAt(text, offset, direction) {
+      const value = typeof text === "string" ? text : "";
+      const length = value.length;
+      let at = clampOffset(offset, length);
+      const code = (index) => value.charCodeAt(index);
+      const isHigh = (index) =>
+        index >= 0 &&
+        index < length &&
+        code(index) >= 0xd800 &&
+        code(index) <= 0xdbff;
+      const isLow = (index) =>
+        index >= 0 &&
+        index < length &&
+        code(index) >= 0xdc00 &&
+        code(index) <= 0xdfff;
+      // A caret can only be reported between code units, so a caret *inside* a
+      // surrogate pair is a half-character position: snap it out of the pair in
+      // the direction of travel, so one Backspace still removes the character.
+      if (isLow(at) && isHigh(at - 1)) at += direction === "forward" ? -1 : 1;
+      if (direction === "forward") {
+        if (at >= length) return null;
+        const end = isHigh(at) && isLow(at + 1) ? at + 2 : at + 1;
+        return { start: at, end };
+      }
+      if (at <= 0) return null;
+      const start = isLow(at - 1) && isHigh(at - 2) ? at - 2 : at - 1;
+      return { start, end: at };
+    }
+
+    /**
+     * Replay queued deletion intents against the *fresh* model.
+     *
+     * Each intent deletes exactly one character from the caret; the caret then
+     * moves with the deletion, so a batch of seven Backspaces removes seven
+     * characters in press order, never one character twice. An intent that
+     * reaches a paragraph edge is reported as `merge` instead of being applied:
+     * joining two paragraphs is a structural op (one `deleteRange` plus an
+     * authoritative refetch), not a text replacement.
+     *
+     * `intents[0]` may carry the `blockId`/`offset` the key was pressed at; it
+     * seeds the caret when the live selection is not available (a flush may
+     * have rebuilt the model in between). The returned ranges are in the
+     * coordinate space of the text at the time of the call, in press order, so
+     * posting them as one ordered `ops` request reproduces the batch.
+     */
+    function planDeletions(document, caret, intents) {
+      const { byId } = collectBlocks(document || {});
+      const texts = new Map();
+      const textOf = (blockId) => {
+        if (texts.has(blockId)) return texts.get(blockId);
+        const entry = byId.get(blockId);
+        const text =
+          entry && entry.block && entry.block.type === "paragraph"
+            ? paragraphText(entry.block)
+            : "";
+        texts.set(blockId, text);
+        return text;
+      };
+      const ranges = [];
+      const skipped = [];
+      const list = Array.isArray(intents) ? intents : [];
+      let cursor = null;
+      const seed = list[0] || caret;
+      if (seed && seed.blockId && byId.has(seed.blockId)) {
+        cursor = {
+          blockId: seed.blockId,
+          offset: clampOffset(seed.offset, textOf(seed.blockId).length),
+        };
+      } else if (caret && caret.blockId && byId.has(caret.blockId)) {
+        cursor = {
+          blockId: caret.blockId,
+          offset: clampOffset(caret.offset, textOf(caret.blockId).length),
+        };
+      }
+      let merge = null;
+      let mergeIndex = -1;
+      for (let index = 0; index < list.length; index += 1) {
+        const intent = list[index];
+        if (!cursor) {
+          skipped.push({ reason: "no-caret", intent });
+          break;
+        }
+        const direction =
+          intent && intent.direction === "forward" ? "forward" : "backward";
+        const text = textOf(cursor.blockId);
+        const range = deletionRangeAt(text, cursor.offset, direction);
+        if (!range) {
+          // The caret reached the paragraph edge: this keystroke is consumed by
+          // the cross-block merge and the rest of the batch belongs to the
+          // structural path.
+          merge = { direction, blockId: cursor.blockId, offset: cursor.offset };
+          mergeIndex = index;
+          break;
+        }
+        ranges.push({
+          blockId: cursor.blockId,
+          start: range.start,
+          end: range.end,
+          direction,
+        });
+        texts.set(
+          cursor.blockId,
+          text.slice(0, range.start) + text.slice(range.end),
+        );
+        cursor = { blockId: cursor.blockId, offset: range.start };
+      }
+      return {
+        ranges,
+        caret: cursor,
+        merge,
+        // Presses after the boundary were not applied; they are replayed against
+        // the merged document instead of being dropped. The boundary press
+        // itself is consumed by the merge, exactly like a native one.
+        remaining: merge ? list.slice(mergeIndex + 1) : [],
+        skipped,
+      };
+    }
+
+    /**
+     * Serialise deletion intents behind the text-flush queue.
+     *
+     * A deletion must be computed from the model the Host is about to confirm,
+     * never from a snapshot taken while a flush is still in flight, so `flush`
+     * runs before every batch and resolves exactly that in-flight request (a
+     * merely debounced flush is cancelled: the model is still current, and
+     * reusing its pending text keeps a typing-plus-deleting burst in one op and
+     * one undo step). One drain runs at a time; presses that arrive during a
+     * flush or an apply join the same drain and are applied in press order,
+     * which is what makes an immediate Backspace after typing deterministic
+     * instead of a race with the debounce.
+     */
+    function createDeletionQueue(options) {
+      const queue = [];
+      let draining = null;
+      let appliedCount = 0;
+      const api = {
+        enqueue(intent) {
+          queue.push(intent);
+          return api.start();
+        },
+        start() {
+          if (draining) return draining;
+          draining = (async () => {
+            try {
+              while (queue.length > 0) {
+                await options.flush();
+                const batch = queue.splice(0, queue.length);
+                await options.apply(batch);
+                appliedCount += batch.length;
+              }
+            } catch (error) {
+              // A failed apply has already reported; never leave stale intents
+              // behind that would delete the same characters twice later.
+              queue.length = 0;
+              if (typeof options.onError === "function") options.onError(error);
+            } finally {
+              draining = null;
+            }
+          })();
+          return draining;
+        },
+        pending: () => queue.length,
+        busy: () => draining !== null,
+        applied: () => appliedCount,
+        idle() {
+          return draining || Promise.resolve();
+        },
+      };
+      return api;
+    }
+
     function stableRunProps(props) {
       if (!props) return "";
       const keys = Object.keys(props).sort();
@@ -7859,6 +8041,10 @@ window.__ModuleLoader__.load({
       const pendingTextRef = React.useRef(new Map());
       const hostTextRef = React.useRef(new Map());
       const flushTimerRef = React.useRef(null);
+      // A refetch that would remount the surface while text is still waiting to
+      // be flushed is deferred until the burst is confirmed: remounting under a
+      // live caret loses the next keystrokes.
+      const deferredRefreshRef = React.useRef(null);
       const titleTimerRef = React.useRef(null);
       const selectionRef = React.useRef(null);
       const caretRef = React.useRef(null);
@@ -8062,6 +8248,14 @@ window.__ModuleLoader__.load({
                 ? null
                 : bootstrap.selection;
             offlineRef.current = false;
+            // `surfaceEpoch` remounts every paragraph. That is the only
+            // reliable way back to a trustworthy surface: React's committed
+            // props can be older than the DOM text the user typed, and a refetch
+            // that returns a *different inline split* would otherwise be applied
+            // to stale committed text — which is exactly how a duplicated
+            // paragraph used to survive a failed op. Refetches that must not
+            // disturb typing (a formatting response that lands mid-burst) are
+            // deferred until the burst is flushed instead.
             patch((previous) => ({
               bootstrap,
               selectedId: documentId,
@@ -8085,10 +8279,6 @@ window.__ModuleLoader__.load({
                     noticeDismissible: true,
                   }
                 : {}),
-              // The surface is memoised on document identity; a refetch that
-              // returns structurally equal content still needs a render when
-              // the DOM was edited optimistically (undo/redo, refetch after a
-              // failed op). An explicit epoch makes that render unconditional.
               surfaceEpoch: (previous.surfaceEpoch || 0) + 1,
             }));
             return bootstrap;
@@ -8098,6 +8288,106 @@ window.__ModuleLoader__.load({
           }
         },
         [patch, rebuildTextCache, reportError],
+      );
+
+      /**
+       * Paragraph ids whose rendered text differs from the model.
+       *
+       * The DOM is edited directly by typing, so React's committed props can
+       * fall behind the real text nodes — and a browser is free to split one
+       * text node into several while the committed props still hold one. A
+       * later re-render then rewrites only the node it knows about, which is how
+       * a failed op used to leave stale (or duplicated) text on screen while the
+       * Host held the right document. This is the authoritative check.
+       */
+      const surfaceMismatches = React.useCallback(() => {
+        const current = stateRef.current;
+        const surface = surfaceRef.current;
+        if (!current || !current.bootstrap || !surface) return [];
+        const mismatched = [];
+        for (const entry of collectBlocks(current.bootstrap.document).list) {
+          const block = entry.block;
+          if (!block || block.type !== "paragraph" || !block.id) continue;
+          const element = findBlockElement(surface, block.id);
+          const dom = element ? domTextOfBlock(element) : null;
+          const model = paragraphText(block);
+          if (dom !== model) mismatched.push({ blockId: block.id, dom, model });
+        }
+        return mismatched;
+      }, []);
+
+      /** Poll until the committed render catches up with the model. */
+      const waitForSurface = React.useCallback(
+        async (timeoutMs) => {
+          const deadline = Date.now() + timeoutMs;
+          let mismatched = surfaceMismatches();
+          while (mismatched.length > 0 && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            mismatched = surfaceMismatches();
+          }
+          return mismatched;
+        },
+        [surfaceMismatches],
+      );
+
+      /**
+       * Invariant after a failed op: the surface must show the document model.
+       *
+       * The recovery is already an authoritative refetch (which bumps
+       * `surfaceEpoch`, so every paragraph remounts from the model). If the DOM
+       * still disagrees afterwards the render is stuck, so retry once and — if
+       * it is *still* wrong — name the paragraph in a notice. A silent
+       * divergence between what the user sees and what the Host holds is never
+       * acceptable.
+       */
+      const settleSurface = React.useCallback(
+        async (caret) => {
+          const target = caret === undefined ? selectionRef.current : caret;
+          let mismatched = await waitForSurface(1500);
+          if (mismatched.length === 0) return { ok: true, reloads: 0 };
+          await reload(target);
+          mismatched = await waitForSurface(1800);
+          if (mismatched.length === 0) return { ok: true, reloads: 1 };
+          const names = mismatched
+            .map(
+              (entry) =>
+                `${entry.blockId} (surface ${JSON.stringify(
+                  String(entry.dom === null ? "<missing>" : entry.dom).slice(
+                    0,
+                    60,
+                  ),
+                )}, document ${JSON.stringify(String(entry.model).slice(0, 60))})`,
+            )
+            .join("; ");
+          patch({
+            notice:
+              `The editor surface could not be refreshed: paragraph ${names} ` +
+              "still differs from the document model. Reload the panel to force a re-render.",
+            noticeDismissible: true,
+          });
+          return { ok: false, reloads: 2, stale: mismatched };
+        },
+        [patch, reload, waitForSurface],
+      );
+
+      /**
+       * One recovery path for every failed document op.
+       *
+       * The error bar is reported first and is *not* cleared by the refetch, so
+       * the failure stays visible while the panel repairs itself. The refetch
+       * also re-applies text that has not reached the Host yet, so a retry only
+       * sends what is still missing and a response-lost failure never
+       * duplicates.
+       */
+      const recoverFromFailure = React.useCallback(
+        async (cause, caret) => {
+          const detail = reportError(cause);
+          const target = caret === undefined ? selectionRef.current : caret;
+          await reload(target);
+          await settleSurface(target);
+          return detail;
+        },
+        [reload, reportError, settleSurface],
       );
 
       /**
@@ -8162,8 +8452,20 @@ window.__ModuleLoader__.load({
               if (attempt > 2) return;
               const reference = stateRef.current.bootstrap;
               if (!reference) return;
+              // Re-read the authoritative document and re-apply the pending
+              // text to it. This deliberately does *not* bump `surfaceEpoch`:
+              // this path runs while the user is still typing into the live
+              // DOM, and remounting the paragraph would drop the native caret.
+              // The DOM text is already the model text here (it is what was just
+              // copied into pending), so no re-render is needed or wanted.
               try {
                 const payload = await apiClient.bootstrap(reference.documentId);
+                // A structural op (split, merge, paste) may have landed while
+                // this refetch was in flight. Its `reload` already installed a
+                // newer document — and *remounted* the surface on it — so
+                // patching the older payload here would put the pre-split
+                // paragraphs back on screen while the Host keeps the new ones.
+                if (stateRef.current.bootstrap !== reference) return;
                 const next = normalizeBootstrap(payload);
                 next.documentId = reference.documentId;
                 rebuildTextCache(next.document, { keepPending: true });
@@ -8205,33 +8507,29 @@ window.__ModuleLoader__.load({
                 if (!pendingTextRef.current.has(op.blockId))
                   pendingTextRef.current.set(op.blockId, op.text);
               }
-              reportError(cause);
               attempt += 1;
-              // Re-read the authoritative text; keep pending so the next pass
-              // sends only what is still missing.
-              const reference = stateRef.current.bootstrap;
-              if (!reference) return;
-              try {
-                const payload = await apiClient.bootstrap(documentId);
-                const next = normalizeBootstrap(payload);
-                next.documentId = documentId;
-                rebuildTextCache(next.document, { keepPending: true });
-                patch((previous) => ({
-                  bootstrap: previous.bootstrap
-                    ? Object.assign({}, previous.bootstrap, {
-                        document: next.document,
-                        stats: next.stats,
-                        blockPages: next.blockPages,
-                        pageCount: next.pageCount,
-                        outline: next.outline,
-                        revision: next.revision,
-                      })
-                    : previous.bootstrap,
-                }));
-              } catch (_error) {
-                return;
-              }
+              // A failed batch may have landed anyway (the Host applied it and
+              // only the response was lost), so the next pass must diff against
+              // the authoritative text. `recoverFromFailure` keeps the error bar
+              // visible, refetches, re-applies the pending text to the fresh
+              // model, bumps `surfaceEpoch` (so the DOM is re-rendered from the
+              // model instead of keeping browser-split text nodes) and checks
+              // that invariant.
+              await recoverFromFailure(cause, selectionRef.current);
+              if (!stateRef.current.bootstrap) return;
             }
+          }
+          // A formatting request that resolved mid-typing deferred its refetch;
+          // now that the burst is confirmed, refresh the surface once from the
+          // model (the caret is no longer racing the render).
+          const deferred = deferredRefreshRef.current;
+          if (
+            deferred !== undefined &&
+            deferred !== null &&
+            pendingTextRef.current.size === 0
+          ) {
+            deferredRefreshRef.current = null;
+            await reload(deferred);
           }
         })();
         flushPromiseRef.current = run
@@ -8240,7 +8538,14 @@ window.__ModuleLoader__.load({
             flushPromiseRef.current = null;
           });
         return flushPromiseRef.current;
-      }, [applyEnvelope, patch, rebuildTextCache, reportError]);
+      }, [
+        applyEnvelope,
+        patch,
+        rebuildTextCache,
+        recoverFromFailure,
+        reload,
+        reportError,
+      ]);
 
       /**
        * Structural operations own the document until their refetch lands.
@@ -8399,12 +8704,10 @@ window.__ModuleLoader__.load({
             }
             return result;
           } catch (cause) {
-            reportError(cause);
-            try {
-              await reload(selectionRef.current);
-            } catch (_error) {
-              /* the error bar already reports the failure */
-            }
+            // Any failed document op goes through one recovery: keep the error
+            // bar, refetch authoritatively, remount the surface and prove the
+            // DOM matches the model (naming the paragraph if it does not).
+            await recoverFromFailure(cause, selectionRef.current);
             return null;
           } finally {
             patch({ saving: false });
@@ -8418,6 +8721,7 @@ window.__ModuleLoader__.load({
           flushPending,
           isReadOnly,
           patch,
+          recoverFromFailure,
           reload,
           reportError,
         ],
@@ -8477,6 +8781,15 @@ window.__ModuleLoader__.load({
         selectionRuntime.lastUpdate = selection;
         patch({ selection });
       }, [patch, readSelection]);
+
+      /** True while typed text has not reached the Host yet. */
+      const typingInFlight = React.useCallback(() => {
+        return Boolean(
+          pendingTextRef.current.size > 0 ||
+          flushTimerRef.current ||
+          flushPromiseRef.current,
+        );
+      }, []);
 
       const scheduleFlush = React.useCallback(() => {
         if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
@@ -8578,8 +8891,15 @@ window.__ModuleLoader__.load({
       );
 
       const handleBeforeInput = React.useCallback((event) => {
-        if (structuralPendingRef.current === 0) return;
         const type = (event && event.inputType) || "";
+        if (structuralPendingRef.current === 0) {
+          // A queued deletion already owns the character: cancelling keydown is
+          // enough on its own, but a browser (or an IME) that reaches
+          // `beforeinput` anyway must not delete it a second time.
+          if (type.startsWith("delete") && deletionOwnsInputRef.current)
+            event.preventDefault();
+          return;
+        }
         if (type === "insertText" || type === "insertCompositionText") {
           event.preventDefault();
           deferredTextRef.current += (event && event.data) || "";
@@ -8644,19 +8964,30 @@ window.__ModuleLoader__.load({
               ops,
             );
             applyEnvelope(result);
-            await reload(selection);
-          } catch (cause) {
-            reportError(cause);
-            try {
-              await reload(selection);
-            } catch (_error) {
-              /* reported above */
+            // A slow Host lets the user keep typing while this request is in
+            // flight. Remounting the surface now would replace the paragraph
+            // under the live caret and lose the next keystrokes, so the refetch
+            // waits for the typing burst to be flushed.
+            if (typingInFlight()) {
+              deferredRefreshRef.current = selectionRef.current || selection;
+            } else {
+              await reload(selectionRef.current || selection);
             }
+          } catch (cause) {
+            await recoverFromFailure(cause, selection);
           } finally {
             patch({ saving: false });
           }
         },
-        [applyEnvelope, flushPending, isReadOnly, patch, reload, reportError],
+        [
+          applyEnvelope,
+          flushPending,
+          isReadOnly,
+          patch,
+          recoverFromFailure,
+          reload,
+          reportError,
+        ],
       );
 
       const applyParagraphProps = React.useCallback(
@@ -8709,19 +9040,27 @@ window.__ModuleLoader__.load({
               { blockIds, props },
             );
             applyEnvelope(result);
-            await reload(selection || undefined);
-          } catch (cause) {
-            reportError(cause);
-            try {
-              await reload(selection || undefined);
-            } catch (_error) {
-              /* reported above */
+            if (typingInFlight()) {
+              deferredRefreshRef.current =
+                selectionRef.current || selection || null;
+            } else {
+              await reload(selectionRef.current || selection || undefined);
             }
+          } catch (cause) {
+            await recoverFromFailure(cause, selection || undefined);
           } finally {
             patch({ saving: false });
           }
         },
-        [applyEnvelope, flushPending, isReadOnly, patch, reload, reportError],
+        [
+          applyEnvelope,
+          flushPending,
+          isReadOnly,
+          patch,
+          recoverFromFailure,
+          reload,
+          reportError,
+        ],
       );
 
       const caretPosition = React.useCallback(() => {
@@ -9145,7 +9484,7 @@ window.__ModuleLoader__.load({
               end: selection.start,
             });
           } catch (cause) {
-            reportError(cause);
+            await recoverFromFailure(cause, selection);
           } finally {
             patch({ saving: false });
             await endStructural();
@@ -9157,6 +9496,7 @@ window.__ModuleLoader__.load({
           endStructural,
           flushPending,
           patch,
+          recoverFromFailure,
           reload,
           reportError,
         ],
@@ -9202,7 +9542,7 @@ window.__ModuleLoader__.load({
               end: { blockId: targetId, offset: 0 },
             });
         } catch (cause) {
-          reportError(cause);
+          await recoverFromFailure(cause, selectionRef.current);
         } finally {
           patch({ saving: false });
           await endStructural();
@@ -9214,6 +9554,7 @@ window.__ModuleLoader__.load({
         flushPending,
         patch,
         placeCaret,
+        recoverFromFailure,
         reload,
         reportError,
       ]);
@@ -9365,7 +9706,7 @@ window.__ModuleLoader__.load({
               });
             }
           } catch (cause) {
-            reportError(cause);
+            await recoverFromFailure(cause, selectionRef.current);
           } finally {
             patch({ saving: false });
             await endStructural();
@@ -9378,6 +9719,7 @@ window.__ModuleLoader__.load({
           flushPending,
           patch,
           placeCaret,
+          recoverFromFailure,
           reload,
           reportError,
         ],
@@ -9403,39 +9745,201 @@ window.__ModuleLoader__.load({
         [flushPending, insertAtCaret, isReadOnly],
       );
 
-      const handleBackspace = React.useCallback(async () => {
-        const current = stateRef.current;
-        if (!current.bootstrap || isReadOnly(current)) return;
-        // Flush pending typing first: the deletion range is derived from the
-        // caret, and a stale Host snapshot clamps it onto the previous text.
-        await flushPending();
-        const selection = normalizeSelection(
-          selectionRef.current,
-          selectionOrderOf(current.bootstrap.document),
-        );
-        if (!selection) return;
-        if (!isCollapsed(selection)) {
-          await deleteSelectedRange(selection);
-          return;
-        }
-        await mergeBackward();
-      }, [deleteSelectedRange, flushPending, isReadOnly, mergeBackward]);
+      /**
+       * True while a Backspace/Delete must be owned by the model.
+       *
+       * Typing leaves text in the pending map and a debounced flush timer
+       * behind; a Backspace inside that window used to be left to the browser,
+       * and by the time the flush resolved the DOM and the model disagreed
+       * about which character was where — so either both deleted (double
+       * delete) or neither did (lost keystroke). Owning the keystroke makes the
+       * deletion count exact and independent of the flush timing.
+       */
+      const deletionQueueRef = React.useRef(null);
+      const deletionFlushRef = React.useRef(null);
+      const deletionApplyRef = React.useRef(null);
 
-      const handleDelete = React.useCallback(async () => {
-        const current = stateRef.current;
-        if (!current.bootstrap || isReadOnly(current)) return;
-        await flushPending();
-        const selection = normalizeSelection(
-          selectionRef.current,
-          selectionOrderOf(current.bootstrap.document),
-        );
-        if (!selection) return;
-        if (!isCollapsed(selection)) {
-          await deleteSelectedRange(selection);
-          return;
+      const deletionShouldQueue = React.useCallback(() => {
+        if (structuralPendingRef.current > 0) return true;
+        if (flushTimerRef.current) return true;
+        if (flushPromiseRef.current) return true;
+        if (pendingTextRef.current.size > 0) return true;
+        const queue = deletionQueueRef.current;
+        return Boolean(queue && (queue.busy() || queue.pending() > 0));
+      }, []);
+
+      /** Set while a queued deletion is draining: the browser must not delete. */
+      const deletionOwnsInputRef = React.useRef(false);
+
+      /**
+       * Apply one drained batch of deletion intents to the model.
+       *
+       * The DOM never performs the deletion: the model does, and the surface is
+       * remounted from it (an epoch bump) so what the user sees is exactly what
+       * the next flush will send. The text is put in the pending map instead of
+       * being posted here, so the existing single-flight flush (with its
+       * refetch-on-failure retry) is the only writer.
+       */
+      const applyDeletionBatch = React.useCallback(
+        async (batch) => {
+          const current = stateRef.current;
+          if (!current || !current.bootstrap || isReadOnly(current)) return;
+          const document = current.bootstrap.document;
+          const live = normalizeSelection(
+            selectionRef.current,
+            selectionOrderOf(document),
+          );
+          const caret = live && isCollapsed(live) ? live.start : null;
+          const plan = planDeletions(document, caret, batch);
+          const byId = collectBlocks(document).byId;
+          let changed = false;
+          for (const range of plan.ranges) {
+            const entry = byId.get(range.blockId);
+            if (!entry || !entry.block || entry.block.type !== "paragraph")
+              continue;
+            applyTextReplace(entry.block, range.start, range.end, "");
+            pendingTextRef.current.set(
+              range.blockId,
+              paragraphText(entry.block),
+            );
+            changed = true;
+          }
+          if (changed && plan.caret) {
+            const selection = {
+              start: { blockId: plan.caret.blockId, offset: plan.caret.offset },
+              end: { blockId: plan.caret.blockId, offset: plan.caret.offset },
+            };
+            selectionRef.current = selection;
+            caretRef.current = selection;
+            patch((previous) => ({
+              bootstrap: previous.bootstrap
+                ? Object.assign({}, previous.bootstrap, { document })
+                : previous.bootstrap,
+              selection,
+              saveState: "unsaved",
+              canUndo: true,
+              // The model is authoritative for this paragraph now; remounting
+              // the surface guarantees the DOM shows the same text instead of
+              // letting React patch text nodes the browser split while typing.
+              surfaceEpoch: (previous.surfaceEpoch || 0) + 1,
+            }));
+            placeCaret(selection);
+            scheduleFlush();
+          }
+          if (plan.merge) {
+            // The deletions ran into a paragraph edge; joining the paragraphs is
+            // a structural op, not a text replacement.
+            await flushPending();
+            if (plan.merge.direction === "backward") await mergeBackward();
+            else await mergeForward();
+            // The keystrokes at and after the boundary were not applied yet.
+            // They are re-queued without their old anchor: the merge moved the
+            // caret into the joined paragraph, and the next pass re-reads it
+            // from there.
+            for (const intent of plan.remaining || []) {
+              deletionQueueRef.current.enqueue({
+                direction:
+                  intent && intent.direction === "forward"
+                    ? "forward"
+                    : "backward",
+              });
+            }
+          }
+        },
+        [
+          flushPending,
+          isReadOnly,
+          mergeBackward,
+          mergeForward,
+          patch,
+          placeCaret,
+          scheduleFlush,
+        ],
+      );
+
+      deletionFlushRef.current = () => {
+        // Cancel a debounced flush: its text is already in the model, and
+        // sending it now would split one burst into two ops (two undo steps).
+        if (flushTimerRef.current) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
         }
-        await mergeForward();
-      }, [deleteSelectedRange, flushPending, isReadOnly, mergeForward]);
+        // An in-flight request must still resolve first: its plan was built
+        // from the pre-deletion model, so it has to land before the range is
+        // computed against the text it confirms.
+        return flushPromiseRef.current || Promise.resolve();
+      };
+      deletionApplyRef.current = (batch) => applyDeletionBatch(batch);
+      if (!deletionQueueRef.current) {
+        deletionQueueRef.current = createDeletionQueue({
+          // Refs keep the queue bound to the current render's callbacks while
+          // the queue itself (and its ordering guarantee) stays single-flight.
+          flush: () => deletionFlushRef.current(),
+          apply: (batch) => deletionApplyRef.current(batch),
+          onError: () => {
+            deletionOwnsInputRef.current = false;
+          },
+        });
+      }
+
+      /**
+       * Queue one Backspace/Delete at the caret.
+       *
+       * The intent records the block, the caret and the range the deletion is
+       * *meant* for; the queue replays it against the model the flush just
+       * confirmed, so the range is exact even if the flush rebuilt the
+       * document.
+       */
+      const queueDeletion = React.useCallback(
+        async (direction) => {
+          const current = stateRef.current;
+          if (!current || !current.bootstrap || isReadOnly(current))
+            return null;
+          const document = current.bootstrap.document;
+          const selection = normalizeSelection(
+            selectionRef.current,
+            selectionOrderOf(document),
+          );
+          if (!selection) return null;
+          if (!isCollapsed(selection)) {
+            await deleteSelectedRange(selection);
+            return null;
+          }
+          const caret = selection.start;
+          const entry = collectBlocks(document).byId.get(caret.blockId);
+          const text =
+            entry && entry.block && entry.block.type === "paragraph"
+              ? paragraphText(entry.block)
+              : "";
+          const offset = clampOffset(caret.offset, text.length);
+          const intent = {
+            direction,
+            blockId: caret.blockId,
+            offset,
+            range: deletionRangeAt(text, offset, direction),
+          };
+          deletionOwnsInputRef.current = true;
+          const drain = deletionQueueRef.current.enqueue(intent);
+          try {
+            await drain;
+          } finally {
+            if (!deletionQueueRef.current.busy())
+              deletionOwnsInputRef.current = false;
+          }
+          return intent;
+        },
+        [deleteSelectedRange, isReadOnly],
+      );
+
+      const handleBackspace = React.useCallback(
+        () => queueDeletion("backward"),
+        [queueDeletion],
+      );
+
+      const handleDelete = React.useCallback(
+        () => queueDeletion("forward"),
+        [queueDeletion],
+      );
 
       handleBackspaceRef.current = handleBackspace;
 
@@ -9677,40 +10181,53 @@ window.__ModuleLoader__.load({
             else void splitParagraph();
             return;
           }
-          if (event.key === "Backspace") {
+          if (event.key === "Backspace" || event.key === "Delete") {
+            const direction =
+              event.key === "Backspace" ? "backward" : "forward";
+            const document = current.bootstrap
+              ? current.bootstrap.document
+              : {};
             const selection = normalizeSelection(
               selectionRef.current,
-              selectionOrderOf(
-                current.bootstrap ? current.bootstrap.document : {},
-              ),
-            );
-            if (!selection) return;
-            if ((selection.start.offset || 0) > 0) return;
-            event.preventDefault();
-            void handleBackspace();
-            return;
-          }
-          if (event.key === "Delete") {
-            const selection = normalizeSelection(
-              selectionRef.current,
-              selectionOrderOf(
-                current.bootstrap ? current.bootstrap.document : {},
-              ),
+              selectionOrderOf(document),
             );
             if (!selection) return;
             if (!isCollapsed(selection)) {
+              // A range — especially one spanning paragraphs — can only be
+              // deleted by the model: the browser clamps at the focused
+              // contenteditable, which silently leaves the rest of the
+              // selection in place. Backspace and Delete are the same
+              // operation for a range.
               event.preventDefault();
               void handleDelete();
               return;
             }
-            const byId = collectBlocks(
-              current.bootstrap ? current.bootstrap.document : {},
-            ).byId;
-            const entry = byId.get(selection.start.blockId);
+            const entry = collectBlocks(document).byId.get(
+              selection.start.blockId,
+            );
             const length = entry ? paragraphText(entry.block).length : 0;
-            if ((selection.start.offset || 0) < length) return;
+            const offset = clampOffset(selection.start.offset, length);
+            const atBoundary =
+              direction === "backward" ? offset === 0 : offset >= length;
+            // A pending/in-flight text flush is exactly the race: the DOM and
+            // the model can disagree about the caret, so the browser must not
+            // delete at all. The panel queues the keystroke and deletes in the
+            // model once the flush has resolved.
+            if (deletionShouldQueue()) {
+              event.preventDefault();
+              void (direction === "backward"
+                ? handleBackspace()
+                : handleDelete());
+              return;
+            }
+            // No flush outstanding: the DOM owns the character, exactly as a
+            // plain contenteditable would. A paragraph edge is a merge, which
+            // is always a model operation.
+            if (!atBoundary) return;
             event.preventDefault();
-            void handleDelete();
+            void (direction === "backward"
+              ? handleBackspace()
+              : handleDelete());
             return;
           }
           if (event.key === "Tab") {
@@ -9728,6 +10245,7 @@ window.__ModuleLoader__.load({
         [
           applyRunPropsToSelection,
           deleteSelectedRange,
+          deletionShouldQueue,
           extendSelectionByKey,
           handleBackspace,
           handleDelete,
@@ -10017,9 +10535,16 @@ window.__ModuleLoader__.load({
           await reload(null, { skipPlacement: true });
           await runSearch();
         } catch (cause) {
-          reportError(cause);
+          await recoverFromFailure(cause, null);
         }
-      }, [applyEnvelope, flushPending, reload, reportError, runSearch]);
+      }, [
+        applyEnvelope,
+        flushPending,
+        recoverFromFailure,
+        reload,
+        reportError,
+        runSearch,
+      ]);
 
       /* -------------------------------------------------------- dialogs */
 
@@ -10632,7 +11157,7 @@ window.__ModuleLoader__.load({
           } catch (cause) {
             if (op === "undo") patch({ canUndo: false });
             else patch({ canRedo: false });
-            reportError(cause);
+            await recoverFromFailure(cause, selectionRef.current);
           } finally {
             await endStructural();
           }
@@ -10644,6 +11169,7 @@ window.__ModuleLoader__.load({
           flushPending,
           patch,
           rebuildTextCache,
+          recoverFromFailure,
           reload,
           reportError,
         ],
@@ -12011,6 +12537,9 @@ window.__ModuleLoader__.load({
       runPropsAtOffset,
       clampOffset,
       diffTextRange,
+      deletionRangeAt,
+      planDeletions,
+      createDeletionQueue,
       applyTextReplace,
       mergeTextRuns,
       findStyle,
