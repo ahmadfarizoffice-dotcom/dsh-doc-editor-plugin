@@ -8251,6 +8251,8 @@ window.__ModuleLoader__.load({
       const deferredTextRef = React.useRef("");
       const inputDuringStructuralRef = React.useRef(false);
       const insertAtCaretRef = React.useRef(null);
+      const deferredDeletesRef = React.useRef(0);
+      const handleBackspaceRef = React.useRef(null);
 
       const beginStructural = React.useCallback(() => {
         structuralPendingRef.current += 1;
@@ -8298,6 +8300,11 @@ window.__ModuleLoader__.load({
             if (insertAtCaretRef.current)
               await insertAtCaretRef.current(deferred);
             else await flushPending();
+          }
+          while (deferredDeletesRef.current > 0) {
+            deferredDeletesRef.current -= 1;
+            if (handleBackspaceRef.current) await handleBackspaceRef.current();
+            else break;
           }
         } catch (_error) {
           /* the operation that raised already reported */
@@ -9076,7 +9083,10 @@ window.__ModuleLoader__.load({
             deferredTextRef.current += event.data || "";
             return;
           }
-          if (type.startsWith("delete")) event.preventDefault();
+          if (type.startsWith("delete")) {
+            event.preventDefault();
+            deferredDeletesRef.current += 1;
+          }
         };
         surface.addEventListener("beforeinput", onBefore, true);
         return () => surface.removeEventListener("beforeinput", onBefore, true);
@@ -9423,6 +9433,8 @@ window.__ModuleLoader__.load({
         await mergeForward();
       }, [deleteSelectedRange, isReadOnly, mergeForward]);
 
+      handleBackspaceRef.current = handleBackspace;
+
       const handleSurfaceCopy = React.useCallback(
         (event) => {
           const text = selectionText();
@@ -9495,11 +9507,12 @@ window.__ModuleLoader__.load({
               deferredTextRef.current += event.key;
               return;
             }
-            if (
-              event.key === "Backspace" ||
-              event.key === "Delete" ||
-              event.key === "Tab"
-            ) {
+            if (event.key === "Backspace" || event.key === "Delete") {
+              event.preventDefault();
+              deferredDeletesRef.current += 1;
+              return;
+            }
+            if (event.key === "Tab") {
               event.preventDefault();
               return;
             }
